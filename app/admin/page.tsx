@@ -1,46 +1,61 @@
-import Link from 'next/link'
+"use client"
 
-export default function AdminPage() {
+import { useEffect, useState } from "react"
+import { createClient } from "@/lib/supabase/client"
+
+export default function AdminUsagePage() {
+  const [usage, setUsage] = useState<any[]>([])
+
+  useEffect(() => {
+    const fetchUsage = async () => {
+      const supabase = createClient()
+      const { data, error } = await supabase.rpc("get_user_usage")
+
+      if (error) {
+        console.error("Error fetching usage:", error)
+      } else {
+        setUsage(data || [])
+      }
+    }
+
+    fetchUsage()
+  }, [])
+
   return (
-    <div className="min-h-screen bg-[#f7f5ef]">
-      <nav className="bg-white border-b border-[#e0ddd4] px-6 py-4">
-        <div className="max-w-[1400px] mx-auto flex items-center gap-8">
-          <h1 className="text-[18px] font-semibold text-[#2d2d2d]">Admin Panel</h1>
-          <Link href="/admin/prompts" className="text-[14px] text-[#6b6b6b] hover:text-[#d97757] transition-colors">
-            System Prompts
-          </Link>
-          <Link href="/dashboard" className="text-[14px] text-[#6b6b6b] hover:text-[#d97757] transition-colors ml-auto">
-            ← Dashboard
-          </Link>
-        </div>
-      </nav>
-
-      <div className="max-w-[1400px] mx-auto px-6 py-12">
-        <div className="mb-8">
-          <h2 className="text-[32px] font-normal text-[#2d2d2d] mb-3">Admin Dashboard</h2>
-          <p className="text-[15px] text-[#6b6b6b]">Manage projects, users, and system settings</p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Link href="/admin/prompts" className="group bg-white border border-[#e0ddd4] rounded-lg p-6 hover:border-[#d97757] hover:shadow-[0_2px_8px_rgba(0,0,0,0.08)] transition-all">
-            <div className="text-3xl mb-4">📝</div>
-            <h3 className="text-[16px] font-semibold text-[#2d2d2d] mb-2">System Prompts</h3>
-            <p className="text-[14px] text-[#6b6b6b] leading-[1.5]">Edit AI assistant prompts for each project</p>
-          </Link>
-
-          <div className="bg-white border border-[#e0ddd4] rounded-lg p-6 opacity-50 cursor-not-allowed">
-            <div className="text-3xl mb-4">👥</div>
-            <h3 className="text-[16px] font-semibold text-[#2d2d2d] mb-2">User Management</h3>
-            <p className="text-[14px] text-[#6b6b6b] leading-[1.5]">Coming soon</p>
-          </div>
-
-          <div className="bg-white border border-[#e0ddd4] rounded-lg p-6 opacity-50 cursor-not-allowed">
-            <div className="text-3xl mb-4">📊</div>
-            <h3 className="text-[16px] font-semibold text-[#2d2d2d] mb-2">Usage Statistics</h3>
-            <p className="text-[14px] text-[#6b6b6b] leading-[1.5]">Coming soon</p>
-          </div>
-        </div>
-      </div>
+    <div className="p-8">
+      <h1 className="text-2xl font-bold mb-6">User Usage Summary</h1>
+      <table className="min-w-full border text-left">
+        <thead>
+          <tr className="bg-gray-100">
+            <th className="px-4 py-2">User</th>
+            <th className="px-4 py-2">Email</th>
+            <th className="px-4 py-2">Total Tokens</th>
+            <th className="px-4 py-2">Total Cost</th>
+            <th className="px-4 py-2">Last Activity</th>
+          </tr>
+        </thead>
+        <tbody>
+          {usage.length > 0 ? (
+            usage.map((row) => (
+              <tr key={row.user_id} className="border-t">
+                <td className="px-4 py-2">{row.name || "—"}</td>
+                <td className="px-4 py-2">{row.email || "—"}</td>
+                <td className="px-4 py-2">{row.total_tokens || 0}</td>
+                <td className="px-4 py-2">${parseFloat(row.total_cost || 0).toFixed(4)}</td>
+                <td className="px-4 py-2">
+                  {row.last_activity ? new Date(row.last_activity).toLocaleString() : "—"}
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={5} className="text-center py-4 text-gray-500">
+                No usage data yet
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
     </div>
   )
 }

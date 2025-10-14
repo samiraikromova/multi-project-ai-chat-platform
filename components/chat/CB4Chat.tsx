@@ -200,88 +200,118 @@ export default function CB4Chat({
   }
 
   const uploadFiles = async () => {
-    const uploadedUrls: string[] = []
-    for (const attachedFile of attachedFiles) {
-      const filePath = `${userId}/${Date.now()}-${attachedFile.name}`
-      const { error } = await supabase.storage.from('chat-files').upload(filePath, attachedFile.file)
-      if (!error) {
-        const { data } = supabase.storage.from('chat-files').getPublicUrl(filePath)
-        uploadedUrls.push(data.publicUrl)
-      } else {
-        console.error('Upload error:', error)
-      }
+  const uploaded: Array<{ url: string; name: string; type?: string; size?: number }> = [];
+
+  for (const attachedFile of attachedFiles) {
+    const filePath = `${userId}/${Date.now()}-${attachedFile.name}`;
+
+    // Upload the file to Supabase Storage
+    const { error: uploadErr } = await supabase
+      .storage
+      .from('chat-files') // ✅ make sure bucket name matches EXACTLY in Supabase
+      .upload(filePath, attachedFile.file, {
+        cacheControl: '3600',
+        upsert: false, // prevent overwriting same file name
+      });
+
+    if (uploadErr) {
+      console.error('Upload error:', uploadErr);
+      continue;
     }
-    return uploadedUrls
-  }
 
-  const sendMessage = async () => {
-    if (!message.trim() && attachedFiles.length === 0) return
-    setLoading(true)
+    // ✅ Correct way to get the public URL
+    const { data } = supabase.storage.from('chat-files').getPublicUrl(filePath);
 
-    let fileUrls: string[] = []
-    if (attachedFiles.length > 0) fileUrls = await uploadFiles()
-
-    const contentWithFiles = message + (fileUrls.length > 0 ? `\n\nAttached files: ${fileUrls.join(', ')}` : '')
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: contentWithFiles,
-      created_at: new Date().toISOString()
-    }
-    setMessages(prev => [...prev, userMessage])
-    const msgToSend = message
-    setMessage("")
-    setAttachedFiles([])
-
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: msgToSend,
-          userId,
-          projectSlug,
-          model: selectedModel,
-          threadId: currentThreadId,
-          fileUrls
-        }),
-      })
-
-      // handle non-json / empty body
-      const text = await res.text()
-      let data: any = {}
-      try {
-        data = text ? JSON.parse(text) : {}
-      } catch {
-        console.error('Non-JSON response from /api/chat:', text)
-        alert('Unexpected response from server')
-      }
-
-      if (data.success) {
-        if (data.threadId && !currentThreadId) {
-          setCurrentThreadId(data.threadId)
-          setCurrentThreadTitle(msgToSend.slice(0, 50) || "New chat")
-        }
-
-        const aiMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: data.reply || 'No response',
-          created_at: new Date().toISOString()
-        }
-        setMessages(prev => [...prev, aiMessage])
-        loadThreads()
-      } else {
-        alert('Error: ' + (data.error || 'Unknown error'))
-      }
-    } catch (error) {
-      console.error('Send message error:', error)
-      alert('Failed to send message')
-    } finally {
-      setLoading(false)
+    if (data?.publicUrl) {
+      uploaded.push({
+        url: data.publicUrl,
+        name: attachedFile.name,
+        type: attachedFile.type,
+        size: attachedFile.size,
+      });
+    } else {
+      console.error('No public URL returned for', filePath);
     }
   }
+
+  return uploaded;
+};
+
+
+
+const sendMessage = async () => {
+  if (!message.trim() && attachedFiles.length === 0) return
+  setLoading(true)
+
+  // prepare optimistic display content (includes file names)
+  const userDisplayContent = message + (attachedFiles.length ? `\n\nAttached: ${attachedFiles.map(f=>f.name).join(", ")}` : "")
+
+  const tempId = `tmp-${Date.now()}`
+
+  const userMessage: Message = {
+    id: tempId,
+    role: 'user',
+    content: userDisplayContent,
+    created_at: new Date().toISOString()
+  }
+
+  setMessages(prev => [...prev, userMessage])
+  const msgToSend = message
+  setMessage("")
+  // freeze attachedFiles for upload
+  const filesToUpload = [...attachedFiles]
+  setAttachedFiles([])
+
+  try {
+    // upload files and get metadata objects
+    let fileObjs: any[] = []
+    if (filesToUpload.length > 0) {
+      fileObjs = await uploadFiles() // returns [{url,name,type,size}]
+    }
+
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: msgToSend,
+        userId,
+        projectSlug,
+        model: selectedModel,
+        threadId: currentThreadId,
+        fileUrls: fileObjs
+      }),
+    })
+
+    const text = await res.text()
+    let data: any = {}
+    try { data = text ? JSON.parse(text) : {} } catch { data = {} }
+
+    if (data.success) {
+      // replace temp message with saved message id (optional: update created_at/content to server version)
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: data.userMessageId || m.id } : m))
+
+      if (data.threadId && !currentThreadId) {
+        setCurrentThreadId(data.threadId)
+      }
+
+      const aiMessage: Message = {
+        id: data.assistantMessageId || `ai-${Date.now()}`,
+        role: 'assistant',
+        content: data.reply || 'No response',
+        created_at: new Date().toISOString()
+      }
+      setMessages(prev => [...prev, aiMessage])
+      loadThreads()
+    } else {
+      alert('Error: ' + (data.error || 'Unknown error'))
+    }
+  } catch (error) {
+    console.error('Send message error:', error)
+    alert('Failed to send message')
+  } finally {
+    setLoading(false)
+  }
+}
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
