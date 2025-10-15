@@ -1,8 +1,10 @@
 "use client"
+
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { isAdminEmail } from '@/lib/adminList'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')
@@ -25,20 +27,47 @@ export default function SignupPage() {
       return
     }
 
-    const { error: signUpError } = await supabase.auth.signUp({
+    // 1️⃣ Sign up user
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
-          full_name: fullName,
-        },
-      },
+          full_name: fullName
+        }
+      }
     })
 
     if (signUpError) {
       setError(signUpError.message)
       setLoading(false)
-    } else {
+      return
+    }
+
+    if (data.user) {
+      const userId = data.user.id
+      const isAdmin = isAdminEmail(email)
+
+      // 2️⃣ Upsert profile row (create or update)
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert(
+          {
+            id: userId,
+            full_name: fullName,
+            email,
+            is_admin: isAdmin
+          },
+          { onConflict: 'id' } // ✅ must be string, not array
+        )
+
+      if (profileError) {
+        console.error('Profile upsert error:', profileError)
+        setError('Failed to create profile')
+        setLoading(false)
+        return
+      }
+
       setSuccess(true)
       setTimeout(() => router.push('/dashboard'), 1500)
     }
@@ -47,7 +76,6 @@ export default function SignupPage() {
   return (
     <div className="min-h-screen bg-[#f7f5ef] flex items-center justify-center px-4">
       <div className="w-full max-w-[400px]">
-        {/* Logo/Brand */}
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-[#d97757] rounded-2xl mx-auto mb-4 flex items-center justify-center text-3xl">
             🧠
@@ -60,7 +88,6 @@ export default function SignupPage() {
           </p>
         </div>
 
-        {/* Form Card */}
         <div className="bg-white border border-[#e0ddd4] rounded-2xl p-8 shadow-sm">
           {error && (
             <div className="mb-6 px-4 py-3 bg-red-50 border border-red-200 rounded-lg">
@@ -139,17 +166,15 @@ export default function SignupPage() {
           </div>
         </div>
 
-        {/* Footer Links */}
         <div className="text-center mt-6">
           <p className="text-[14px] text-[#6b6b6b]">
             Already have an account?{' '}
-            <Link href="/auth/login" className="text-[#d97757] hover:text-[#c86545] font-medium transition-colors">
+            <Link href="../login" className="text-[#d97757] hover:text-[#c86545] font-medium transition-colors">
               Sign in
             </Link>
           </p>
         </div>
 
-        {/* Additional Help */}
         <div className="text-center mt-8 pt-8 border-t border-[#e0ddd4]">
           <Link href="/" className="text-[13px] text-[#8b8b8b] hover:text-[#6b6b6b] transition-colors">
             ← Back to home

@@ -40,14 +40,7 @@ export default function AdminPrompts() {
 
   return (
     <div className="min-h-screen bg-[#f7f5ef]">
-      <nav className="bg-white border-b border-[#e0ddd4] px-6 py-4">
-        <div className="max-w-[1400px] mx-auto flex items-center gap-8">
-          <Link href="/admin" className="text-[14px] text-[#6b6b6b] hover:text-[#d97757] transition-colors">
-            ← Admin
-          </Link>
-          <h1 className="text-[18px] font-semibold text-[#2d2d2d]">System Prompts</h1>
-        </div>
-      </nav>
+
 
       <div className="max-w-[1100px] mx-auto px-6 py-12">
         <div className="mb-8">

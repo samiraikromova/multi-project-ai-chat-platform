@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import {NextRequest, NextResponse} from "next/server";
 import { createClient } from '@/lib/supabase/server'
 
 // Token estimation (approximate)
@@ -129,30 +129,32 @@ export async function POST(req: NextRequest) {
     })
 
     // Log usage - CRITICAL FIX
-    const { error: usageError } = await supabase.from('usage_logs').insert({
+    // Log usage - safer insert
+const { error: usageError } = await supabase
+  .from('usage_logs')
+  .insert([
+    {
       user_id: actualUserId,
       thread_id: currentThreadId,
       model: model || 'Claude Sonnet 4',
       tokens_input: inputTokens,
       tokens_output: outputTokens,
-      estimated_cost: estimatedCost
-    })
+      estimated_cost: estimatedCost,
+    },
+  ])
+  .select()
 
-    if (usageError) {
-      console.error('Usage logging error:', usageError)
-      // Don't fail the request, just log the error
-    }
+if (usageError) {
+  console.error('❌ Usage logging error:', usageError.message)
+} else {
+  console.log(`✅ Logged usage for ${actualUserId}:`, {
+    model,
+    inputTokens,
+    outputTokens,
+    estimatedCost,
+  })
+}
 
-    return NextResponse.json({ 
-      reply: replyContent, 
-      success: true,
-      threadId: currentThreadId,
-      usage: {
-        inputTokens,
-        outputTokens,
-        estimatedCost: estimatedCost.toFixed(6)
-      }
-    })
   } catch (error: any) {
     console.error('Chat API Error:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })

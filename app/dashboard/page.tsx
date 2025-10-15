@@ -1,6 +1,46 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 export default function DashboardPage() {
+  const router = useRouter()
+  const supabase = createClient()
+  const [user, setUser] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user) {
+        router.push('/auth/login')
+      } else {
+        setUser(user)
+      }
+      setLoading(false)
+    }
+
+    fetchUser()
+  }, [router, supabase])
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    router.push('/auth/login')
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-[#2d2d2d]">
+        Loading...
+      </div>
+    )
+  }
+
   const projects = [
     {
       id: 'cb4',
@@ -54,60 +94,86 @@ export default function DashboardPage() {
   ]
 
   return (
-      <div className="min-h-screen bg-[#f7f5ef]">
-        <header className="border-b border-[#e0ddd4] bg-white">
-          <div className="max-w-[1400px] mx-auto px-8 py-4 flex justify-between items-center">
-            <h1 className="text-[18px] font-semibold text-[#2d2d2d]">AI Chat Platform</h1>
-            <div
-                className="w-8 h-8 rounded-full bg-[#d97757] flex items-center justify-center text-white text-[14px] font-medium cursor-pointer hover:bg-[#c86545] transition-colors">
-              C
-            </div>
-          </div>
-        </header>
+    <div className="min-h-screen bg-[#f7f5ef]">
+      {/* Header */}
+      <header className="border-b border-[#e0ddd4] bg-white">
+        <div className="max-w-[1400px] mx-auto px-8 py-4 flex justify-between items-center">
+          <h1 className="text-[18px] font-semibold text-[#2d2d2d]">AI Chat Platform</h1>
 
-        <div className="max-w-[1400px] mx-auto px-8 py-12">
-          <div className="mb-12">
-            <h1 className="text-[32px] font-normal text-[#2d2d2d] mb-3">
-              Your Projects
-            </h1>
-            <p className="text-[15px] text-[#6b6b6b] font-normal">
-              Select a project to start chatting with your specialized AI assistant
-            </p>
-          </div>
+          {/* --- User Avatar + Logout --- */}
+          {user && (
+            <div className="flex items-center space-x-3">
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {projects.map((project) => (
-                <Link
-                    key={project.id}
-                    href={project.disabled ? '#' : `/dashboard/project/${project.id}`}
-                    className={`group bg-white border border-[#e0ddd4] rounded-lg p-5 transition-all duration-200 ${
-                        project.disabled
-                            ? 'opacity-50 cursor-not-allowed'
-                            : 'hover:border-[#d97757] hover:shadow-[0_2px_8px_rgba(0,0,0,0.08)] cursor-pointer'
-                    }`}
+              {user.user_metadata?.avatar_url ? (
+                <img
+                  src={user.user_metadata.avatar_url}
+                  alt="Avatar"
+                  className="w-8 h-8 rounded-full object-cover border border-[#ddd]"
+                />
+              ) : (
+                <div
+                  className="w-8 h-8 rounded-full bg-[#d97757] flex items-center justify-center text-white text-[14px] font-medium"
                 >
-                  <div
-                      className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl mb-4 transition-transform duration-200 group-hover:scale-105"
-                      style={{backgroundColor: project.color + '20'}}
-                  >
-                    {project.icon}
-                  </div>
-                  <h3 className="text-[16px] font-semibold text-[#2d2d2d] mb-1">
-                    {project.name}
-                  </h3>
-                  <p className="text-[13px] text-[#8b8b8b] mb-2">{project.subtitle}</p>
-                  <p className="text-[14px] text-[#6b6b6b] leading-[1.5]">
-                    {project.description}
-                  </p>
-                  {project.disabled && (
-                      <span className="inline-block mt-3 text-[11px] text-[#999] bg-[#f5f5f5] px-2 py-1 rounded">
+                  {user.user_metadata?.full_name
+                    ? user.user_metadata.full_name.charAt(0).toUpperCase()
+                    : (user.email?.charAt(0).toUpperCase() || 'U')}
+                </div>
+              )}
+
+              <button
+                onClick={handleLogout}
+                className="text-[14px] text-[#d97757] border border-[#d97757] px-3 py-1 rounded-lg hover:bg-[#d97757] hover:text-white transition-all"
+              >
+                Logout
+              </button>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* Body */}
+      <div className="max-w-[1400px] mx-auto px-8 py-12">
+        <div className="mb-12">
+          <h1 className="text-[32px] font-normal text-[#2d2d2d] mb-3">Your Projects</h1>
+          <p className="text-[15px] text-[#6b6b6b] font-normal">
+            Select a project to start chatting with your specialized AI assistant
+          </p>
+        </div>
+
+        {/* Projects Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {projects.map((project) => (
+            <Link
+              key={project.id}
+              href={project.disabled ? '#' : `/dashboard/project/${project.id}`}
+              className={`group bg-white border border-[#e0ddd4] rounded-lg p-5 transition-all duration-200 ${
+                project.disabled
+                  ? 'opacity-50 cursor-not-allowed'
+                  : 'hover:border-[#d97757] hover:shadow-[0_2px_8px_rgba(0,0,0,0.08)] cursor-pointer'
+              }`}
+            >
+              <div
+                className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl mb-4 transition-transform duration-200 group-hover:scale-105"
+                style={{ backgroundColor: project.color + '20' }}
+              >
+                {project.icon}
+              </div>
+              <h3 className="text-[16px] font-semibold text-[#2d2d2d] mb-1">
+                {project.name}
+              </h3>
+              <p className="text-[13px] text-[#8b8b8b] mb-2">{project.subtitle}</p>
+              <p className="text-[14px] text-[#6b6b6b] leading-[1.5]">
+                {project.description}
+              </p>
+              {project.disabled && (
+                <span className="inline-block mt-3 text-[11px] text-[#999] bg-[#f5f5f5] px-2 py-1 rounded">
                   🚧 In Development
                 </span>
-                  )}
-                </Link>
-            ))}
-          </div>
+              )}
+            </Link>
+          ))}
         </div>
       </div>
+    </div>
   )
 }
