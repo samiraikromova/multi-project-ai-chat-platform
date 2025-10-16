@@ -27,49 +27,118 @@ export default function SignupPage() {
       return
     }
 
-    // 1️⃣ Sign up user
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: fullName
-        }
-      }
-    })
+    try {
+      console.log('🔵 Starting signup for:', email)
 
-    if (signUpError) {
-      setError(signUpError.message)
-      setLoading(false)
-      return
-    }
-
-    if (data.user) {
-      const userId = data.user.id
-      const isAdmin = isAdminEmail(email)
-
-      // 2️⃣ Upsert profile row (create or update)
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert(
-          {
-            id: userId,
+      // Sign up user with Supabase Auth
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password: password,
+        options: {
+          data: {
             full_name: fullName,
-            email,
-            is_admin: isAdmin
-          },
-          { onConflict: 'id' } // ✅ must be string, not array
-        )
+            is_admin: isAdminEmail(email)
+          }
+        }
+      })
 
-      if (profileError) {
-        console.error('Profile upsert error:', profileError)
-        setError('Failed to create profile')
+      console.log('🔵 Signup response:', {
+        userId: data?.user?.id,
+        error: signUpError?.message
+      })
+
+      if (signUpError) {
+        console.error('❌ Signup error:', signUpError)
+
+        if (signUpError.message.includes('already') ||
+            signUpError.message.includes('registered')) {
+          setError('This email is already registered. Please sign in instead.')
+        } else {
+          setError(signUpError.message)
+        }
         setLoading(false)
         return
       }
 
-      setSuccess(true)
-      setTimeout(() => router.push('/dashboard'), 1500)
+      // Check if user already exists
+      if (data.user && data.user.identities && data.user.identities.length === 0) {
+        setError('This email is already registered. Please sign in instead.')
+        setLoading(false)
+        return
+      }
+
+      if (data.user) {
+        const userId = data.user.id
+        console.log('✅ User created in auth:', userId)
+
+        // Wait for trigger to complete
+        await new Promise(resolve => setTimeout(resolve, 2000))
+
+        // Check if profile exists
+        console.log('🔵 Checking for profile...')
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', userId)
+          .maybeSingle()
+
+        if (profileError) {
+          console.warn('⚠️ Profile check error:', profileError.message)
+        }
+
+        // If profile doesn't exist, create it manually
+        if (!profile) {
+          console.log('⚠️ Profile not found, creating manually...')
+
+          const { error: insertError } = await supabase
+            .from('profiles')
+            .insert({
+              id: userId,
+              email: email,
+              full_name: fullName,
+              is_admin: isAdminEmail(email)
+            })
+
+          if (insertError) {
+            console.error('❌ Manual profile creation failed:', insertError)
+            setError('Account created but profile setup failed. Please try logging in.')
+            setLoading(false)
+            return
+          }
+
+          console.log('✅ Profile created manually')
+        } else {
+          console.log('✅ Profile exists')
+        }
+
+        // Also create user record if needed
+        const { error: userInsertError } = await supabase
+          .from('users')
+          .insert({
+            id: userId,
+            name: fullName,
+            email: email,
+            total_tokens: 0,
+            total_cost: 0
+          })
+          .select()
+          .maybeSingle()
+
+        if (userInsertError && !userInsertError.message.includes('duplicate')) {
+          console.warn('⚠️ User record creation warning:', userInsertError.message)
+        } else {
+          console.log('✅ User record created')
+        }
+
+        setSuccess(true)
+        setTimeout(() => {
+          router.push('/dashboard')
+        }, 1500)
+      }
+    } catch (err: any) {
+      console.error('❌ Unexpected error:', err)
+      setError(err.message || 'An unexpected error occurred')
+      setLoading(false)
     }
   }
 
@@ -115,6 +184,7 @@ export default function SignupPage() {
                 className="w-full px-4 py-3 text-[15px] border border-[#e0ddd4] rounded-lg focus:outline-none focus:border-[#d97757] transition-colors"
                 placeholder="John Doe"
                 required
+                disabled={loading || success}
               />
             </div>
 
@@ -129,6 +199,7 @@ export default function SignupPage() {
                 className="w-full px-4 py-3 text-[15px] border border-[#e0ddd4] rounded-lg focus:outline-none focus:border-[#d97757] transition-colors"
                 placeholder="you@example.com"
                 required
+                disabled={loading || success}
               />
             </div>
 
@@ -144,6 +215,7 @@ export default function SignupPage() {
                 placeholder="••••••••"
                 required
                 minLength={6}
+                disabled={loading || success}
               />
               <p className="text-[12px] text-[#8b8b8b] mt-1.5">
                 Must be at least 6 characters
@@ -169,7 +241,7 @@ export default function SignupPage() {
         <div className="text-center mt-6">
           <p className="text-[14px] text-[#6b6b6b]">
             Already have an account?{' '}
-            <Link href="../login" className="text-[#d97757] hover:text-[#c86545] font-medium transition-colors">
+            <Link href="/auth/login" className="text-[#d97757] hover:text-[#c86545] font-medium transition-colors">
               Sign in
             </Link>
           </p>

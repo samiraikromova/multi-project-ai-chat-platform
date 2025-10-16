@@ -21,12 +21,12 @@ export default function HomePage() {
         </p>
 
         <div className="flex gap-4 justify-center">
-          <Link href="auth/login">
+          <Link href="/auth/login">
             <button className="px-6 py-3 bg-black text-white rounded-2xl text-lg shadow-sm hover:shadow-md transition">
               Log In
             </button>
           </Link>
-          <Link href="auth/signup">
+          <Link href="/auth/signup">
             <button className="px-6 py-3 border border-gray-400 rounded-2xl text-lg hover:bg-gray-200 transition">
               Sign Up
             </button>

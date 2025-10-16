@@ -144,6 +144,8 @@ const { error: usageError } = await supabase
   ])
   .select()
 
+// ... your existing code ...
+
 if (usageError) {
   console.error('❌ Usage logging error:', usageError.message)
 } else {
@@ -154,6 +156,15 @@ if (usageError) {
     estimatedCost,
   })
 }
+
+// ✅ FINALLY RETURN A RESPONSE!
+return NextResponse.json({
+  success: true,
+  threadId: currentThreadId,
+  reply: replyContent,
+  estimatedCost,
+})
+
 
   } catch (error: any) {
     console.error('Chat API Error:', error)

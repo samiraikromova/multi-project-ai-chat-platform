@@ -30,6 +30,7 @@ export default function LoginPage() {
     }
   }
 
+
   return (
     <div className="min-h-screen bg-[#f7f5ef] flex items-center justify-center px-4">
       <div className="w-full max-w-[400px]">
