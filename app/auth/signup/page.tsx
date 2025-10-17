@@ -1,147 +1,7 @@
-"use client"
-
-import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { signup } from './actions'
 import Link from 'next/link'
-import { isAdminEmail } from '@/lib/adminList'
 
 export default function SignupPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [fullName, setFullName] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState(false)
-  const router = useRouter()
-  const supabase = createClient()
-
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters long')
-      setLoading(false)
-      return
-    }
-
-    try {
-      console.log('🔵 Starting signup for:', email)
-
-      // Sign up user with Supabase Auth
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password: password,
-        options: {
-          data: {
-            full_name: fullName,
-            is_admin: isAdminEmail(email)
-          }
-        }
-      })
-
-      console.log('🔵 Signup response:', {
-        userId: data?.user?.id,
-        error: signUpError?.message
-      })
-
-      if (signUpError) {
-        console.error('❌ Signup error:', signUpError)
-
-        if (signUpError.message.includes('already') ||
-            signUpError.message.includes('registered')) {
-          setError('This email is already registered. Please sign in instead.')
-        } else {
-          setError(signUpError.message)
-        }
-        setLoading(false)
-        return
-      }
-
-      // Check if user already exists
-      if (data.user && data.user.identities && data.user.identities.length === 0) {
-        setError('This email is already registered. Please sign in instead.')
-        setLoading(false)
-        return
-      }
-
-      if (data.user) {
-        const userId = data.user.id
-        console.log('✅ User created in auth:', userId)
-
-        // Wait for trigger to complete
-        await new Promise(resolve => setTimeout(resolve, 2000))
-
-        // Check if profile exists
-        console.log('🔵 Checking for profile...')
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('id', userId)
-          .maybeSingle()
-
-        if (profileError) {
-          console.warn('⚠️ Profile check error:', profileError.message)
-        }
-
-        // If profile doesn't exist, create it manually
-        if (!profile) {
-          console.log('⚠️ Profile not found, creating manually...')
-
-          const { error: insertError } = await supabase
-            .from('profiles')
-            .insert({
-              id: userId,
-              email: email,
-              full_name: fullName,
-              is_admin: isAdminEmail(email)
-            })
-
-          if (insertError) {
-            console.error('❌ Manual profile creation failed:', insertError)
-            setError('Account created but profile setup failed. Please try logging in.')
-            setLoading(false)
-            return
-          }
-
-          console.log('✅ Profile created manually')
-        } else {
-          console.log('✅ Profile exists')
-        }
-
-        // Also create user record if needed
-        const { error: userInsertError } = await supabase
-          .from('users')
-          .insert({
-            id: userId,
-            name: fullName,
-            email: email,
-            total_tokens: 0,
-            total_cost: 0
-          })
-          .select()
-          .maybeSingle()
-
-        if (userInsertError && !userInsertError.message.includes('duplicate')) {
-          console.warn('⚠️ User record creation warning:', userInsertError.message)
-        } else {
-          console.log('✅ User record created')
-        }
-
-        setSuccess(true)
-        setTimeout(() => {
-          router.push('/dashboard')
-        }, 1500)
-      }
-    } catch (err: any) {
-      console.error('❌ Unexpected error:', err)
-      setError(err.message || 'An unexpected error occurred')
-      setLoading(false)
-    }
-  }
-
   return (
     <div className="min-h-screen bg-[#f7f5ef] flex items-center justify-center px-4">
       <div className="w-full max-w-[400px]">
@@ -158,64 +18,47 @@ export default function SignupPage() {
         </div>
 
         <div className="bg-white border border-[#e0ddd4] rounded-2xl p-8 shadow-sm">
-          {error && (
-            <div className="mb-6 px-4 py-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-[14px] text-red-700">{error}</p>
-            </div>
-          )}
-
-          {success && (
-            <div className="mb-6 px-4 py-3 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-[14px] text-green-700">
-                ✓ Account created! Redirecting...
-              </p>
-            </div>
-          )}
-
-          <form onSubmit={handleSignup} className="space-y-5">
+          <form className="space-y-5">
             <div>
-              <label className="block text-[14px] font-medium text-[#2d2d2d] mb-2">
+              <label htmlFor="fullName" className="block text-[14px] font-medium text-[#2d2d2d] mb-2">
                 Full name
               </label>
               <input
+                id="fullName"
+                name="fullName"
                 type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
                 className="w-full px-4 py-3 text-[15px] border border-[#e0ddd4] rounded-lg focus:outline-none focus:border-[#d97757] transition-colors"
                 placeholder="John Doe"
                 required
-                disabled={loading || success}
               />
             </div>
 
             <div>
-              <label className="block text-[14px] font-medium text-[#2d2d2d] mb-2">
+              <label htmlFor="email" className="block text-[14px] font-medium text-[#2d2d2d] mb-2">
                 Email address
               </label>
               <input
+                id="email"
+                name="email"
                 type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-3 text-[15px] border border-[#e0ddd4] rounded-lg focus:outline-none focus:border-[#d97757] transition-colors"
                 placeholder="you@example.com"
                 required
-                disabled={loading || success}
               />
             </div>
 
             <div>
-              <label className="block text-[14px] font-medium text-[#2d2d2d] mb-2">
+              <label htmlFor="password" className="block text-[14px] font-medium text-[#2d2d2d] mb-2">
                 Password
               </label>
               <input
+                id="password"
+                name="password"
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-4 py-3 text-[15px] border border-[#e0ddd4] rounded-lg focus:outline-none focus:border-[#d97757] transition-colors"
                 placeholder="••••••••"
                 required
                 minLength={6}
-                disabled={loading || success}
               />
               <p className="text-[12px] text-[#8b8b8b] mt-1.5">
                 Must be at least 6 characters
@@ -223,11 +66,10 @@ export default function SignupPage() {
             </div>
 
             <button
-              type="submit"
-              disabled={loading || success}
-              className="w-full bg-[#d97757] hover:bg-[#c86545] disabled:bg-[#ccc] text-white font-medium py-3 rounded-lg text-[15px] transition-colors"
+              formAction={signup}
+              className="w-full bg-[#d97757] hover:bg-[#c86545] text-white font-medium py-3 rounded-lg text-[15px] transition-colors"
             >
-              {loading ? 'Creating account...' : success ? 'Account created!' : 'Create account'}
+              Sign up
             </button>
           </form>
 
@@ -256,3 +98,4 @@ export default function SignupPage() {
     </div>
   )
 }
+
