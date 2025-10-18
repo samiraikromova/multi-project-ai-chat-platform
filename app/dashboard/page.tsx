@@ -1,5 +1,4 @@
 'use client'
-
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -10,6 +9,7 @@ export default function DashboardPage() {
   const supabase = createClient()
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [showUserMenu, setShowUserMenu] = useState(false)
 
   useEffect(() => {
     async function fetchUser() {
@@ -100,38 +100,48 @@ export default function DashboardPage() {
         <div className="max-w-[1400px] mx-auto px-8 py-4 flex justify-between items-center">
           <h1 className="text-[18px] font-semibold text-[#2d2d2d]">AI Chat Platform</h1>
 
-          {/* --- User Avatar + Logout --- */}
           {user && (
-            <div className="flex items-center space-x-3">
-
-              {user.user_metadata?.avatar_url ? (
-                <img
-                  src={user.user_metadata.avatar_url}
-                  alt="Avatar"
-                  className="w-8 h-8 rounded-full object-cover border border-[#ddd]"
-                />
-              ) : (
-                <div
-                  className="w-8 h-8 rounded-full bg-[#d97757] flex items-center justify-center text-white text-[14px] font-medium"
-                >
+            <div className="relative">
+              <button
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                className="flex items-center space-x-3 hover:opacity-80 transition-opacity"
+              >
+                <div className="w-8 h-8 rounded-full bg-[#d97757] flex items-center justify-center text-white text-[14px] font-medium">
                   {user.user_metadata?.full_name
                     ? user.user_metadata.full_name.charAt(0).toUpperCase()
                     : (user.email?.charAt(0).toUpperCase() || 'U')}
                 </div>
-              )}
-
-              <button
-                onClick={handleLogout}
-                className="text-[14px] text-[#d97757] border border-[#d97757] px-3 py-1 rounded-lg hover:bg-[#d97757] hover:text-white transition-all"
-              >
-                Logout
+                <span className="text-[14px] text-[#2d2d2d]">
+                  {user.user_metadata?.full_name || user.email}
+                </span>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                  <path d="M6 8L3 5h6L6 8z"/>
+                </svg>
               </button>
+
+              {showUserMenu && (
+                <div className="absolute right-0 mt-2 w-48 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 z-50">
+                  <Link
+                    href="../account"
+                    className="block px-4 py-2 text-[14px] text-[#2d2d2d] hover:bg-[#f5f5f5] transition-colors"
+                    onClick={() => setShowUserMenu(false)}
+                  >
+                    Account Settings
+                  </Link>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full text-left px-4 py-2 text-[14px] text-red-600 hover:bg-red-50 transition-colors"
+                  >
+                    Logout
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
       </header>
 
-      {/* Body */}
+      {/* Projects Grid */}
       <div className="max-w-[1400px] mx-auto px-8 py-12">
         <div className="mb-12">
           <h1 className="text-[32px] font-normal text-[#2d2d2d] mb-3">Your Projects</h1>
@@ -140,7 +150,6 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {/* Projects Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {projects.map((project) => (
             <Link

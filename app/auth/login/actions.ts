@@ -19,5 +19,5 @@ export async function login(formData: FormData) {
   }
 
   revalidatePath('/', 'layout')
-  redirect('/account')  // Redirect to account page
+  redirect('/dashboard') // ✅ Redirect to dashboard after login
 }
