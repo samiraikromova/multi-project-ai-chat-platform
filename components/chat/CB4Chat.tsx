@@ -26,18 +26,30 @@ interface AttachedFile {
   file: File
 }
 
+interface Project {
+  id: string
+  slug: string
+  icon: string
+}
+
 interface CB4ChatProps {
   userId: string
+  projectId: string
   projectName?: string
   projectSlug?: string
   projectEmoji?: string
+  systemPrompt?: string
+  projectColor?: string
 }
 
 export default function CB4Chat({
   userId,
+  projectId,
   projectName = "CB4",
   projectSlug = "cb4",
-  projectEmoji = "🧠"
+  projectEmoji = "🧠",
+  systemPrompt = "",
+  projectColor = "#d97757"
 }: CB4ChatProps) {
   const [message, setMessage] = useState("")
   const [messages, setMessages] = useState<Message[]>([])
@@ -46,7 +58,13 @@ export default function CB4Chat({
   const [currentThreadTitle, setCurrentThreadTitle] = useState("New Chat")
   const [loading, setLoading] = useState(false)
   const [selectedModel, setSelectedModel] = useState('Claude Sonnet 4')
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('sidebarOpen')
+      return saved !== null ? JSON.parse(saved) : true
+    }
+    return true
+  })
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false)
   const [userDropdownOpen, setUserDropdownOpen] = useState(false)
   const [deleteMenuOpen, setDeleteMenuOpen] = useState<string | null>(null)
@@ -55,6 +73,7 @@ export default function CB4Chat({
   const [isDragging, setIsDragging] = useState(false)
   const [userName, setUserName] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [allProjects, setAllProjects] = useState<Project[]>([])
 
   const supabase = createClient()
   const router = useRouter()
@@ -63,6 +82,11 @@ export default function CB4Chat({
   const deleteMenuRef = useRef<HTMLDivElement>(null)
   const fileMenuRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Save sidebar state
+  useEffect(() => {
+    localStorage.setItem('sidebarOpen', JSON.stringify(sidebarOpen))
+  }, [sidebarOpen])
 
   // Click outside handlers
   useEffect(() => {
@@ -76,12 +100,47 @@ export default function CB4Chat({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // Drag and drop
-  const handleDragEnter = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true) }
-  const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); if (e.currentTarget === e.target) setIsDragging(false) }
-  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation() }
-  const handleDrop = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); handleFiles(Array.from(e.dataTransfer.files)) }
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files) handleFiles(Array.from(e.target.files)); setFileMenuOpen(false) }
+// Drag and drop handlers
+const handleDragEnter = (e: React.DragEvent) => {
+  e.preventDefault()
+  e.stopPropagation()
+  setIsDragging(true)
+}
+
+const handleDragLeave = (e: React.DragEvent) => {
+  e.preventDefault()
+  e.stopPropagation()
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const x = e.clientX
+  const y = e.clientY
+
+  // Only close if truly leaving the container
+  if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
+    setIsDragging(false)
+  }
+}
+
+const handleDragOver = (e: React.DragEvent) => {
+  e.preventDefault()
+  e.stopPropagation()
+}
+
+const handleDrop = (e: React.DragEvent) => {
+  e.preventDefault()
+  e.stopPropagation()
+  const files = Array.from(e.dataTransfer.files)
+  if (files.length > 0) {
+    handleFiles(files)
+    // Only close after successfully handling files
+    setTimeout(() => setIsDragging(false), 300)
+  } else {
+    setIsDragging(false)
+  }
+}
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) handleFiles(Array.from(e.target.files))
+    setFileMenuOpen(false)
+  }
 
   const handleFiles = (files: File[]) => {
     const validFiles = files.filter(file => {
@@ -110,19 +169,42 @@ export default function CB4Chat({
     })
   }
 
-  // Load threads
-  const loadThreads = useCallback(async () => {
-    const { data: projects } = await supabase.from('projects').select('id').eq('slug', projectSlug).single()
-    if (!projects) return
-    const { data } = await supabase.from('chat_threads').select('*').eq('user_id', userId).eq('project_id', projects.id).order('created_at', { ascending: false })
-    if (data) setThreads(data)
-  }, [supabase, userId, projectSlug])
+  // Load all projects
+  useEffect(() => {
+    async function fetchProjects() {
+      const { data } = await supabase
+        .from('projects')
+        .select('id, slug, icon')
+        .eq('is_active', true)
+        .order('created_at', { ascending: true })
+      if (data) setAllProjects(data)
+    }
+    fetchProjects()
+  }, [supabase])
 
-  // Load messages
+  // Load threads for THIS specific project
+  const loadThreads = useCallback(async () => {
+    const { data } = await supabase
+      .from('chat_threads')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
+
+    if (data) setThreads(data)
+  }, [supabase, userId, projectId])
+
+  // Load messages for current thread
   const loadMessages = useCallback(async () => {
     if (!currentThreadId) return
-    const { data } = await supabase.from('messages').select('*').eq('thread_id', currentThreadId).order('created_at', { ascending: true })
+    const { data } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('thread_id', currentThreadId)
+      .order('created_at', { ascending: true })
+
     if (data) setMessages(data)
+
     const thread = threads.find(t => t.id === currentThreadId)
     if (thread) setCurrentThreadTitle(thread.title)
   }, [supabase, currentThreadId, threads])
@@ -130,13 +212,27 @@ export default function CB4Chat({
   useEffect(() => { loadThreads() }, [loadThreads])
   useEffect(() => { loadMessages() }, [loadMessages])
 
-  const createNewThread = async () => { setCurrentThreadId(null); setMessages([]); setCurrentThreadTitle("New Chat"); setAttachedFiles([]) }
-  const deleteThread = async (threadId: string) => { await supabase.from('chat_threads').delete().eq('id', threadId); if (currentThreadId === threadId) createNewThread(); loadThreads(); setDeleteMenuOpen(null) }
+  const createNewThread = async () => {
+    setCurrentThreadId(null)
+    setMessages([])
+    setCurrentThreadTitle("New Chat")
+    setAttachedFiles([])
+  }
+
+  const deleteThread = async (threadId: string) => {
+    await supabase.from('chat_threads').delete().eq('id', threadId)
+    if (currentThreadId === threadId) createNewThread()
+    loadThreads()
+    setDeleteMenuOpen(null)
+  }
 
   useEffect(() => {
     const fetchUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (user) { setUserName(user.user_metadata?.full_name || user.user_metadata?.name || null); setUserEmail(user.email || null) }
+      if (user) {
+        setUserName(user.user_metadata?.full_name || user.user_metadata?.name || null)
+        setUserEmail(user.email || null)
+      }
     }
     fetchUser()
   }, [supabase])
@@ -145,39 +241,102 @@ export default function CB4Chat({
     const uploaded: Array<{ url: string; name: string; type?: string; size?: number }> = []
     for (const attachedFile of attachedFiles) {
       const filePath = `${userId}/${Date.now()}-${attachedFile.name}`
-      const { error: uploadErr } = await supabase.storage.from('chat-files').upload(filePath, attachedFile.file, { cacheControl: '3600', upsert: false })
-      if (uploadErr) { console.error('Upload error:', uploadErr); continue }
+      const { error: uploadErr } = await supabase.storage
+        .from('chat-files')
+        .upload(filePath, attachedFile.file, { cacheControl: '3600', upsert: false })
+
+      if (uploadErr) {
+        console.error('Upload error:', uploadErr)
+        continue
+      }
+
       const { data } = supabase.storage.from('chat-files').getPublicUrl(filePath)
-      if (data?.publicUrl) uploaded.push({ url: data.publicUrl, name: attachedFile.name, type: attachedFile.type, size: attachedFile.size })
+      if (data?.publicUrl) {
+        uploaded.push({
+          url: data.publicUrl,
+          name: attachedFile.name,
+          type: attachedFile.type,
+          size: attachedFile.size
+        })
+      }
     }
     return uploaded
   }
 
   const sendMessage = async () => {
     if (!message.trim() && attachedFiles.length === 0) return
+
     setLoading(true)
     const userDisplayContent = message + (attachedFiles.length ? `\n\nAttached: ${attachedFiles.map(f => f.name).join(", ")}` : "")
     const tempId = `tmp-${Date.now()}`
-    setMessages(prev => [...prev, { id: tempId, role: 'user', content: userDisplayContent, created_at: new Date().toISOString() }])
-    const msgToSend = message; setMessage(""); const filesToUpload = [...attachedFiles]; setAttachedFiles([])
+
+    setMessages(prev => [...prev, {
+      id: tempId,
+      role: 'user',
+      content: userDisplayContent,
+      created_at: new Date().toISOString()
+    }])
+
+    const msgToSend = message
+    setMessage("")
+    const filesToUpload = [...attachedFiles]
+    setAttachedFiles([])
 
     try {
       let fileObjs: any[] = []
       if (filesToUpload.length > 0) fileObjs = await uploadFiles()
-      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: msgToSend, userId, projectSlug, model: selectedModel, threadId: currentThreadId, fileUrls: fileObjs }) })
-      const text = await res.text(); let data: any = {}; try { data = text ? JSON.parse(text) : {} } catch { data = {} }
+
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: msgToSend,
+          userId,
+          projectId,
+          projectSlug,
+          model: selectedModel,
+          threadId: currentThreadId,
+          fileUrls: fileObjs,
+          systemPrompt
+        })
+      })
+
+      const text = await res.text()
+      let data: any = {}
+      try { data = text ? JSON.parse(text) : {} } catch { data = {} }
+
       if (data.success) {
         setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: data.userMessageId || m.id } : m))
         if (data.threadId && !currentThreadId) setCurrentThreadId(data.threadId)
-        setMessages(prev => [...prev, { id: data.assistantMessageId || `ai-${Date.now()}`, role: 'assistant', content: data.reply || 'No response', created_at: new Date().toISOString() }])
+        setMessages(prev => [...prev, {
+          id: data.assistantMessageId || `ai-${Date.now()}`,
+          role: 'assistant',
+          content: data.reply || 'No response',
+          created_at: new Date().toISOString()
+        }])
         loadThreads()
-      } else { alert('Error: ' + (data.error || 'Unknown error')) }
-    } catch (error) { console.error('Send message error:', error); alert('Failed to send message') }
+      } else {
+        alert('Error: ' + (data.error || 'Unknown error'))
+      }
+    } catch (error) {
+      console.error('Send message error:', error)
+      alert('Failed to send message')
+    }
     finally { setLoading(false) }
   }
 
-  const handleKeyPress = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }
-  const handleLogout = async () => { await supabase.auth.signOut(); router.push('/auth/login') }
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      sendMessage()
+    }
+  }
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push('/auth/login')
+  }
+
   const models = [
     { name: 'Claude Sonnet 4', provider: 'Anthropic' },
     { name: 'GPT-4o', provider: 'OpenAI' },
@@ -185,16 +344,25 @@ export default function CB4Chat({
     { name: 'Deepseek', provider: 'Deepseek' },
     { name: 'xAI', provider: 'xAI' },
   ]
-  const formatFileSize = (bytes: number) => bytes < 1024 ? bytes + ' B' : bytes < 1024 * 1024 ? (bytes / 1024).toFixed(1) + ' KB' : (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+  }
 
   return (
     <div className="flex h-screen bg-[#f7f5ef] relative" onDragEnter={handleDragEnter} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
       {/* Drag overlay */}
       {isDragging && (
-        <div className="absolute inset-0 bg-[#f7f5ef]/95 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-32 h-32 border-4 border-dashed border-[#d97757] rounded-2xl mx-auto mb-6 flex items-center justify-center">
-              <svg width="48" height="48" viewBox="0 0 48 48" fill="#d97757"><path d="M24 8v24M12 20l12-12 12 12" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        <div className="absolute inset-0 bg-[#f7f5ef]/95 backdrop-blur-sm z-50 flex items-center justify-center pointer-events-none">
+          <div className="text-center pointer-events-auto">
+            <div
+                className="w-32 h-32 border-4 border-dashed border-[#d97757] rounded-2xl mx-auto mb-6 flex items-center justify-center">
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="#d97757">
+                <path d="M24 8v24M12 20l12-12 12 12" stroke="currentColor" strokeWidth="3" fill="none"
+                      strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
             </div>
             <p className="text-[20px] font-medium text-[#2d2d2d]">Drop files here to add to chat</p>
             <p className="text-[14px] text-[#6b6b6b] mt-2">Images, PDFs, and text files only (max 5MB)</p>
@@ -205,15 +373,218 @@ export default function CB4Chat({
       <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.txt" onChange={handleFileSelect} className="hidden" />
 
       {/* Sidebar */}
-      {/* ... sidebar code unchanged ... */}
+      <aside className={`${sidebarOpen ? 'w-[260px]' : 'w-[60px]'} bg-[#f7f5ef] border-r border-[#e0ddd4] flex flex-col transition-all duration-300 flex-shrink-0`}>
+        {/* Collapsed Sidebar */}
+        {!sidebarOpen && (
+          <div className="flex flex-col h-full items-center py-3 gap-2">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="w-10 h-10 rounded-lg hover:bg-[#e8e6df] transition-colors flex items-center justify-center text-[#6b6b6b]"
+              title="Open sidebar"
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
+                <line x1="8" y1="4" x2="8" y2="16" stroke="currentColor" strokeWidth="1.5"/>
+              </svg>
+            </button>
+
+            <button
+              onClick={createNewThread}
+              className="w-10 h-10 rounded-full bg-[#d97757] hover:bg-[#c86545] transition-colors flex items-center justify-center text-white"
+              title="New chat"
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M10 5v10M5 10h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+            </button>
+
+            {threads.length > 0 && (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="w-10 h-10 rounded-lg hover:bg-[#e8e6df] transition-colors flex items-center justify-center text-[#6b6b6b]"
+                title="View chats"
+              >
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <path d="M3 7h14M3 10h14M3 13h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </button>
+            )}
+
+            <div className="flex-1"></div>
+
+
+
+            {/* User avatar */}
+            <div className="relative" ref={userDropdownRef}>
+              <button
+                onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                className="w-10 h-10 rounded-full flex items-center justify-center text-white text-[13px] font-medium hover:opacity-80 transition-opacity"
+                style={{ backgroundColor: '#d97757' }}
+              >
+                {userName ? userName.charAt(0).toUpperCase() : (userEmail?.charAt(0).toUpperCase() || 'U')}
+              </button>
+              {userDropdownOpen && (
+              <div className="absolute bottom-full left-12 mb-2 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 w-48 z-50">
+                <button
+                  onClick={() => {
+                    router.push('/account')
+                    setUserDropdownOpen(false)
+                  }}
+                  className="w-full px-3 py-2 text-left text-[13px] text-[#2d2d2d] hover:bg-[#f5f5f5] transition-colors"
+                >
+                  Account Settings
+                </button>
+                <button onClick={handleLogout} className="w-full px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors">
+                  Logout
+                </button>
+              </div>
+            )}
+            </div>
+          </div>
+        )}
+
+        {/* Expanded Sidebar */}
+        {sidebarOpen && (
+          <>
+            <div className="p-3 border-b border-[#e0ddd4] flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">{projectEmoji}</span>
+                <h2 className="text-[15px] font-semibold text-[#2d2d2d]">{projectName}</h2>
+              </div>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="p-1.5 hover:bg-[#e8e6df] rounded-lg transition-colors"
+                title="Close sidebar"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-3 space-y-2">
+              <button
+                onClick={createNewThread}
+                className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[#d97757] hover:bg-[#c86545] transition-colors text-[14px] text-white font-medium"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M8 4v8M4 8h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+                New Chat
+              </button>
+
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors text-[13px] text-[#6b6b6b]"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M14 8H2M6 4l-4 4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                All Projects
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-2">
+              {threads.length > 0 && (
+                <div className="text-[11px] text-[#8b8b8b] px-3 py-2 font-medium">RECENT CHATS</div>
+              )}
+              {threads.map(thread => (
+                <div key={thread.id} className="relative group mb-1">
+                  <button
+                    onClick={() => setCurrentThreadId(thread.id)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-[13px] transition-colors ${
+                      currentThreadId === thread.id
+                        ? 'bg-[#e8e6df] text-[#2d2d2d] font-medium'
+                        : 'text-[#6b6b6b] hover:bg-[#e8e6df]/50'
+                    }`}
+                  >
+                    <div className="truncate">{thread.title}</div>
+                  </button>
+                  {currentThreadId === thread.id && (
+                    <div className="absolute right-2 top-2">
+                      <button
+                        onClick={() => setDeleteMenuOpen(deleteMenuOpen === thread.id ? null : thread.id)}
+                        className="p-1 hover:bg-[#f7f5ef] rounded transition-colors"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                          <circle cx="7" cy="3" r="1"/>
+                          <circle cx="7" cy="7" r="1"/>
+                          <circle cx="7" cy="11" r="1"/>
+                        </svg>
+                      </button>
+                      {deleteMenuOpen === thread.id && (
+                        <div className="absolute right-0 top-full mt-1 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 w-32 z-50" ref={deleteMenuRef}>
+                          <button
+                            onClick={() => deleteThread(thread.id)}
+                            className="w-full px-3 py-1.5 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Project icons section */}
+            <div className="border-t border-[#e0ddd4] p-3">
+
+
+              <div className="relative" ref={userDropdownRef}>
+                <button
+                  onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors"
+                >
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[13px] font-medium flex-shrink-0"
+                    style={{ backgroundColor: '#d97757' }}
+                  >
+                    {userName ? userName.charAt(0).toUpperCase() : (userEmail?.charAt(0).toUpperCase() || 'U')}
+                  </div>
+                  <div className="flex-1 text-left min-w-0">
+                    <div className="text-[13px] text-[#2d2d2d] truncate font-medium">
+                      {userName || userEmail || 'User'}
+                    </div>
+                  </div>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="flex-shrink-0">
+                    <path d="M6 8L3 5h6L6 8z"/>
+                  </svg>
+                </button>
+                {userDropdownOpen && (
+                  <div className="absolute bottom-full left-0 mb-2 w-full bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1">
+                    <div className="px-3 py-2 border-b border-[#e0ddd4]">
+                      <div className="text-[13px] text-[#2d2d2d] font-medium truncate">{userName || 'User'}</div>
+                      <div className="text-[11px] text-[#8b8b8b] truncate">{userEmail}</div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        router.push('/account')
+                        setUserDropdownOpen(false)
+                      }}
+                      className="w-full px-3 py-2 text-left text-[13px] text-[#2d2d2d] hover:bg-[#f5f5f5] transition-colors"
+                    >
+                      Account Settings
+                    </button>
+                    <button
+                      onClick={handleLogout}
+                      className="w-full px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      Logout
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </aside>
 
       {/* Main chat area */}
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 flex flex-col min-w-0">
         <header className="bg-[#f7f5ef] border-b border-[#e0ddd4] px-6 py-3 flex items-center gap-4">
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-[#e0ddd4] rounded-lg transition-colors">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5"/><line x1="8" y1="4" x2="8" y2="16" stroke="currentColor" strokeWidth="1.5"/></svg>
-          </button>
-          {/* Show project emoji next to thread title */}
+
           <span className="text-xl">{projectEmoji}</span>
           <h2 className="text-[15px] font-medium text-[#2d2d2d]">{currentThreadTitle}</h2>
         </header>
@@ -231,18 +602,22 @@ export default function CB4Chat({
               <div className="space-y-6">
                 {messages.map(msg => (
                   <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'bg-[#d97757] text-white' : 'bg-white border border-[#e0ddd4] text-[#2d2d2d]'}`}>
+                    <div
+                        className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+                            msg.role === 'user' ? 'text-white bg-[#d97757]' : 'bg-white border border-[#e0ddd4] text-[#2d2d2d]'
+                        }`}
+                    >
                       <p className="text-[15px] leading-[1.6] whitespace-pre-wrap">{msg.content}</p>
                     </div>
                   </div>
                 ))}
                 {loading && (
-                  <div className="flex justify-start">
-                    <div className="bg-white border border-[#e0ddd4] rounded-2xl px-4 py-3">
-                      <div className="flex gap-1.5">
-                        <div className="w-2 h-2 bg-[#d97757] rounded-full animate-bounce"/>
-                        <div className="w-2 h-2 bg-[#d97757] rounded-full animate-bounce delay-100"/>
-                        <div className="w-2 h-2 bg-[#d97757] rounded-full animate-bounce delay-200"/>
+                    <div className="flex justify-start">
+                      <div className="bg-white border border-[#e0ddd4] rounded-2xl px-4 py-3">
+                        <div className="flex gap-1.5">
+                          <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: '#d97757' }}/>
+                        <div className="w-2 h-2 rounded-full animate-bounce delay-100" style={{ backgroundColor: '#d97757' }}/>
+                        <div className="w-2 h-2 rounded-full animate-bounce delay-200" style={{ backgroundColor: '#d97757' }}/>
                       </div>
                     </div>
                   </div>
@@ -259,13 +634,22 @@ export default function CB4Chat({
               <div className="mb-3 flex flex-wrap gap-2">
                 {attachedFiles.map(file => (
                   <div key={file.id} className="relative bg-white border border-[#e0ddd4] rounded-lg p-2 pr-8 flex items-center gap-2">
-                    {file.type.startsWith('image/') ? <img src={file.url} alt={file.name} className="w-10 h-10 object-cover rounded" /> : <div className="w-10 h-10 bg-[#f5f5f5] rounded flex items-center justify-center text-[#6b6b6b]">📄</div>}
+                    {file.type.startsWith('image/') ? (
+                      <img src={file.url} alt={file.name} className="w-10 h-10 object-cover rounded" />
+                    ) : (
+                      <div className="w-10 h-10 bg-[#f5f5f5] rounded flex items-center justify-center text-[#6b6b6b]">📄</div>
+                    )}
                     <div className="text-[12px]">
                       <div className="text-[#2d2d2d] font-medium max-w-[150px] truncate">{file.name}</div>
                       <div className="text-[#8b8b8b]">{formatFileSize(file.size)}</div>
                     </div>
-                    <button onClick={() => removeFile(file.id)} className="absolute top-1 right-1 w-5 h-5 bg-[#f5f5f5] hover:bg-[#e0ddd4] rounded-full flex items-center justify-center text-[#6b6b6b] hover:text-[#2d2d2d] transition-colors">
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M9 3L3 9M3 3l6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                    <button
+                      onClick={() => removeFile(file.id)}
+                      className="absolute top-1 right-1 w-5 h-5 bg-[#f5f5f5] hover:bg-[#e0ddd4] rounded-full flex items-center justify-center text-[#6b6b6b] hover:text-[#2d2d2d] transition-colors"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M9 3L3 9M3 3l6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
                     </button>
                   </div>
                 ))}
@@ -274,36 +658,82 @@ export default function CB4Chat({
 
             <div className="bg-white border-2 border-[#e0ddd4] rounded-2xl shadow-sm focus-within:border-[#d97757] transition-colors flex items-center gap-2 px-4 py-3">
               <div className="relative" ref={fileMenuRef}>
-                <button onClick={() => setFileMenuOpen(!fileMenuOpen)} className="p-2 text-[#6b6b6b] hover:bg-[#f5f5f5] rounded-lg transition-colors" title="Add file">
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 5v10M5 10h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                <button
+                  onClick={() => setFileMenuOpen(!fileMenuOpen)}
+                  className="p-2 text-[#6b6b6b] hover:bg-[#f5f5f5] rounded-lg transition-colors"
+                  title="Add file"
+                >
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                    <path d="M10 5v10M5 10h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  </svg>
                 </button>
                 {fileMenuOpen && (
                   <div className="absolute bottom-full left-0 mb-2 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 w-48 z-50">
-                    <button onClick={() => { fileInputRef.current?.click(); setFileMenuOpen(false) }} className="w-full px-4 py-2 text-left text-[14px] hover:bg-[#f5f5f5] transition-colors">Upload file</button>
+                    <button
+                      onClick={() => {
+                        fileInputRef.current?.click()
+                        setFileMenuOpen(false)
+                      }}
+                      className="w-full px-4 py-2 text-left text-[14px] hover:bg-[#f5f5f5] transition-colors"
+                    >
+                      Upload file
+                    </button>
                   </div>
                 )}
               </div>
 
-              <input value={message} onChange={(e) => setMessage(e.target.value)} onKeyPress={handleKeyPress} disabled={loading} className="flex-1 outline-none text-[15px] text-[#2d2d2d] bg-transparent placeholder:text-[#999]" placeholder={`Message ${projectName}...`} />
+              <input
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyPress={handleKeyPress}
+                disabled={loading}
+                className="flex-1 outline-none text-[15px] text-[#2d2d2d] bg-transparent placeholder:text-[#999]"
+                placeholder={`Message ${projectName}...`}
+              />
 
               <div className="relative" ref={modelDropdownRef}>
-                <button onClick={() => setModelDropdownOpen(!modelDropdownOpen)} className="flex items-center gap-1 text-[13px] text-[#6b6b6b] hover:bg-[#f5f5f5] px-3 py-1.5 rounded transition-colors">{selectedModel}<svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><path d="M6 8L3 5h6L6 8z"/></svg></button>
+                <button
+                  onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
+                  className="flex items-center gap-1 text-[13px] text-[#6b6b6b] hover:bg-[#f5f5f5] px-3 py-1.5 rounded transition-colors"
+                >
+                  {selectedModel}
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                    <path d="M6 8L3 5h6L6 8z"/>
+                  </svg>
+                </button>
                 {modelDropdownOpen && (
                   <div className="absolute right-0 bottom-full mb-2 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-2 w-56 z-50">
                     {models.map(model => (
-                      <button key={model.name} onClick={() => { setSelectedModel(model.name); setModelDropdownOpen(false) }} className="w-full px-4 py-2 text-left hover:bg-[#f5f5f5] transition-colors flex items-center justify-between">
+                      <button
+                        key={model.name}
+                        onClick={() => {
+                          setSelectedModel(model.name)
+                          setModelDropdownOpen(false)
+                        }}
+                        className="w-full px-4 py-2 text-left hover:bg-[#f5f5f5] transition-colors flex items-center justify-between"
+                      >
                         <div>
                           <div className="text-[14px] text-[#2d2d2d] font-medium">{model.name}</div>
                           <div className="text-[12px] text-[#8b8b8b]">{model.provider}</div>
                         </div>
-                        {selectedModel === model.name && <svg width="16" height="16" viewBox="0 0 16 16" fill="#d97757"><path d="M13 4L6 11 3 8l1-1 2 2 6-6 1 1z"/></svg>}
+                        {selectedModel === model.name && (
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="#d97757">
+                            <path d="M13 4L6 11 3 8l1-1 2 2 6-6 1 1z"/>
+                          </svg>
+                        )}
                       </button>
                     ))}
                   </div>
                 )}
               </div>
 
-              <button onClick={sendMessage} disabled={loading} className="bg-[#d97757] hover:bg-[#c86545] text-white rounded-xl px-4 py-2 text-[14px] font-medium transition-colors">Send</button>
+              <button
+                onClick={sendMessage}
+                disabled={loading}
+                className="bg-[#d97757] hover:bg-[#c86545] text-white rounded-xl px-4 py-2 text-[14px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Send
+              </button>
             </div>
           </div>
         </div>
