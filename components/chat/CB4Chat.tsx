@@ -425,15 +425,6 @@ const handleDrop = (e: React.DragEvent) => {
               </button>
               {userDropdownOpen && (
               <div className="absolute bottom-full left-12 mb-2 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 w-48 z-50">
-                <button
-                  onClick={() => {
-                    router.push('/account')
-                    setUserDropdownOpen(false)
-                  }}
-                  className="w-full px-3 py-2 text-left text-[13px] text-[#2d2d2d] hover:bg-[#f5f5f5] transition-colors"
-                >
-                  Account Settings
-                </button>
                 <button onClick={handleLogout} className="w-full px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors">
                   Logout
                 </button>
@@ -558,15 +549,6 @@ const handleDrop = (e: React.DragEvent) => {
                       <div className="text-[13px] text-[#2d2d2d] font-medium truncate">{userName || 'User'}</div>
                       <div className="text-[11px] text-[#8b8b8b] truncate">{userEmail}</div>
                     </div>
-                    <button
-                      onClick={() => {
-                        router.push('/account')
-                        setUserDropdownOpen(false)
-                      }}
-                      className="w-full px-3 py-2 text-left text-[13px] text-[#2d2d2d] hover:bg-[#f5f5f5] transition-colors"
-                    >
-                      Account Settings
-                    </button>
                     <button
                       onClick={handleLogout}
                       className="w-full px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors"

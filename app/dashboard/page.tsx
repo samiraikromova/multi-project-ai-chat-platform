@@ -121,13 +121,7 @@ export default function DashboardPage() {
 
               {showUserMenu && (
                 <div className="absolute right-0 mt-2 w-48 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 z-50">
-                  <Link
-                    href="../account"
-                    className="block px-4 py-2 text-[14px] text-[#2d2d2d] hover:bg-[#f5f5f5] transition-colors"
-                    onClick={() => setShowUserMenu(false)}
-                  >
-                    Account Settings
-                  </Link>
+
                   <button
                     onClick={handleLogout}
                     className="w-full text-left px-4 py-2 text-[14px] text-red-600 hover:bg-red-50 transition-colors"

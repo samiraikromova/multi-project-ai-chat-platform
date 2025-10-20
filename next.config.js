@@ -5,12 +5,23 @@ const nextConfig = {
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   },
 
-  // ✅ Add this block to allow your network IP in dev mode
   experimental: {
     allowedDevOrigins: [
       'http://192.168.56.1:3000',
       'http://localhost:3000',
     ],
+  },
+
+  // ✅ Fix Watchpack errors on Windows
+  webpackDevMiddleware: (config) => {
+    config.watchOptions.ignored = [
+      '**/node_modules/**',
+      '**/.git/**',
+      'C:/pagefile.sys',
+      'C:/hiberfil.sys',
+      'C:/swapfile.sys'
+    ];
+    return config;
   },
 }
 
