@@ -16,45 +16,33 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [])
 
   const checkAuth = async () => {
-    try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser()
+  try {
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
 
-      if (userError || !user || !user.email) {
-        console.log('No user found')
-        router.push('/auth/login')
-        return
-      }
-
-      console.log('Checking admin for:', user.email)
-
-      // Check if email is in admin list
-      if (!isAdminEmail(user.email)) {
-        console.log('Not an admin email')
-        alert('Access denied. Admin privileges required.')
-        router.push('/dashboard')
-        return
-      }
-
-      // Update profile to mark as admin
-      await supabase
-        .from('profiles')
-        .upsert({
-          id: user.id,
-          email: user.email,
-          is_admin: true
-        }, {
-          onConflict: 'id'
-        })
-
-      console.log('Admin access granted')
-      setIsAdmin(true)
-    } catch (err) {
-      console.error('Auth check error:', err)
+    if (userError || !user || !user.email) {
+      console.log('No user found')
       router.push('/auth/login')
-    } finally {
-      setLoading(false)
+      return
     }
+
+    // Check if email is in admin list (now async)
+    const isAdmin = await isAdminEmail(user.email)
+    if (!isAdmin) {
+      console.log('Not an admin email')
+      alert('Access denied. Admin privileges required.')
+      router.push('/dashboard')
+      return
+    }
+
+    console.log('Admin access granted')
+    setIsAdmin(true)
+  } catch (err) {
+    console.error('Auth check error:', err)
+    router.push('/auth/login')
+  } finally {
+    setLoading(false)
   }
+}
 
   if (loading) {
     return (
@@ -72,6 +60,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="min-h-screen bg-[#f7f5ef]">
       <nav className="bg-white border-b border-[#e0ddd4] px-6 py-4">
         <div className="max-w-[1400px] mx-auto flex items-center gap-8">
+          <Link href="../admin/admins" className="text-[14px] text-[#6b6b6b] hover:text-[#d97757] transition-colors">
+            Manage Admins
+          </Link>
           <Link href="../admin" className="text-[18px] font-semibold text-[#2d2d2d]">
             Admin Panel
           </Link>

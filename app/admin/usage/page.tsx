@@ -36,63 +36,63 @@ export default function AdminUsagePage() {
   }, [])
 
   const loadData = async () => {
-    try {
-      // Fetch usage logs
-      const { data: logs, error: logsError } = await supabase
-        .from('usage_logs')
-        .select('*')
-        .order('created_at', { ascending: false })
+  try {
+    // Fetch usage logs
+    const { data: logs, error: logsError } = await supabase
+      .from('usage_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
 
-      if (logsError) {
-        console.error('Error fetching logs:', logsError)
-        setLoading(false)
-        return
+    if (logsError) {
+      console.error('Error fetching logs:', logsError)
+      setLoading(false)
+      return
+    }
+
+    setUsageLogs(logs || [])
+
+    // Fetch users from the view
+    const { data: users } = await supabase
+      .from('user_info')
+      .select('*')
+
+    // Aggregate by user
+    const userMap = new Map<string, UserData>()
+
+    logs?.forEach(log => {
+      const user = users?.find(u => u.id === log.user_id)
+
+      if (!userMap.has(log.user_id)) {
+        userMap.set(log.user_id, {
+          userId: log.user_id,
+          userName: user?.full_name || 'Unknown',
+          email: user?.email || 'N/A',
+          totalMessages: 0,
+          totalTokensInput: 0,
+          totalTokensOutput: 0,
+          totalCost: 0,
+          lastActivity: log.created_at
+        })
       }
 
-      setUsageLogs(logs || [])
+      const userData = userMap.get(log.user_id)!
+      userData.totalMessages++
+      userData.totalTokensInput += log.tokens_input || 0
+      userData.totalTokensOutput += log.tokens_output || 0
+      userData.totalCost += parseFloat(log.estimated_cost?.toString() || '0')
 
-      // Fetch profiles
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, full_name, email')
+      if (new Date(log.created_at) > new Date(userData.lastActivity)) {
+        userData.lastActivity = log.created_at
+      }
+    })
 
-      // Aggregate by user
-      const userMap = new Map<string, UserData>()
-
-      logs?.forEach(log => {
-        const profile = profiles?.find(p => p.id === log.user_id)
-        
-        if (!userMap.has(log.user_id)) {
-          userMap.set(log.user_id, {
-            userId: log.user_id,
-            userName: profile?.full_name || 'Unknown',
-            email: profile?.email || 'N/A',
-            totalMessages: 0,
-            totalTokensInput: 0,
-            totalTokensOutput: 0,
-            totalCost: 0,
-            lastActivity: log.created_at
-          })
-        }
-
-        const user = userMap.get(log.user_id)!
-        user.totalMessages++
-        user.totalTokensInput += log.tokens_input || 0
-        user.totalTokensOutput += log.tokens_output || 0
-        user.totalCost += parseFloat(log.estimated_cost?.toString() || '0')
-        
-        if (new Date(log.created_at) > new Date(user.lastActivity)) {
-          user.lastActivity = log.created_at
-        }
-      })
-
-      setUserData(Array.from(userMap.values()))
-    } catch (error) {
-      console.error('Error:', error)
-    } finally {
-      setLoading(false)
-    }
+    setUserData(Array.from(userMap.values()))
+  } catch (error) {
+    console.error('Error:', error)
+  } finally {
+    setLoading(false)
   }
+}
 
   if (loading) {
     return (
