@@ -16,7 +16,7 @@
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/auth-helpers-react": "^0.5.0",
     "@supabase/ssr": "^0.5.2",
-    "@supabase/supabase-js": "^2.46.2",
+    "@supabase/supabase-js": "^2.76.1",
     "ai": "^5.0.61",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.23.24",

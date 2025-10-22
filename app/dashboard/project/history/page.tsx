@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
 import { useSession } from "@supabase/auth-helpers-react"; // or your auth hook
 import Link from "next/link";
 
@@ -17,6 +17,7 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
 
   const session = useSession();
+  const supabase = createClient(); // ✅ CREATE CLIENT INSTANCE
 
   useEffect(() => {
     if (!session?.user) return;
@@ -29,12 +30,12 @@ export default function HistoryPage() {
         .order("created_at", { ascending: false });
 
       if (error) console.error(error);
-      else setThreads(data);
+      else setThreads(data || []); // ✅ HANDLE NULL
       setLoading(false);
     };
 
     fetchThreads();
-  }, [session]);
+  }, [session, supabase]); // ✅ ADD SUPABASE TO DEPS
 
   const deleteThread = async (id: string) => {
     const { error } = await supabase.from("chat_threads").delete().eq("id", id);
