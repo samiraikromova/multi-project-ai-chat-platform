@@ -1,5 +1,13 @@
 "use client"
-import CB4Chat from "./CB4Chat"
+import ProjectChatWrapper from "./ProjectChatWrapper"
+
 export default function StudentAdWritingChat({ userId }: { userId: string }) {
-  return <CB4Chat userId={userId} projectName="Student Ad Writing" projectSlug="student-ads" projectEmoji="🎓" />
+  return (
+    <ProjectChatWrapper
+      userId={userId}
+      projectSlug="student-ads"
+      projectName="Student Ad Writing"
+      projectEmoji="🎓"
+    />
+  )
 }

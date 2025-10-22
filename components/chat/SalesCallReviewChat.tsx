@@ -1,5 +1,13 @@
 "use client"
-import CB4Chat from "./CB4Chat"
+import ProjectChatWrapper from "./ProjectChatWrapper"
+
 export default function SalesCallReviewChat({ userId }: { userId: string }) {
-  return <CB4Chat userId={userId} projectName="Sales Call Review" projectSlug="sales-transcript" projectEmoji="📞" />
+  return (
+    <ProjectChatWrapper
+      userId={userId}
+      projectSlug="sales-transcript"
+      projectName="Sales Call Review"
+      projectEmoji="📞"
+    />
+  )
 }
