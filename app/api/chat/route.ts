@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from '@/lib/supabase/server'
-import Anthropic from '@anthropic-ai/sdk'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
+
 
 // Calculate token cost based on model
 function calculateCost(model: string, inputTokens: number, outputTokens: number): number {
@@ -57,17 +54,14 @@ export async function POST(request: Request) {
     }
 
     const supabase = await createClient()
-
-    // Get authenticated user
     const { data: { user } } = await supabase.auth.getUser()
     const actualUserId = user?.id || userId
 
-    // Get or create thread
+    // Get or create thread (keep your existing code)
     let currentThreadId = threadId
     let threadTitle = 'New Chat'
 
     if (!currentThreadId) {
-      // Create new thread
       const firstWords = message.split(' ').slice(0, 6).join(' ')
       threadTitle = firstWords.length > 50 ? firstWords.substring(0, 50) + '...' : firstWords
 
@@ -120,9 +114,7 @@ export async function POST(request: Request) {
       .order('created_at', { ascending: true })
       .limit(20)
 
-    // Build messages for Claude
     const conversationMessages: any[] = []
-
     if (history) {
       history.forEach(msg => {
         if (msg.role === 'user' || msg.role === 'assistant') {
@@ -134,7 +126,7 @@ export async function POST(request: Request) {
       })
     }
 
-    // Handle file attachments if any
+    // Handle file attachments
     if (fileUrls && fileUrls.length > 0) {
       const lastMessage = conversationMessages[conversationMessages.length - 1]
       if (lastMessage && lastMessage.role === 'user') {
@@ -145,26 +137,58 @@ export async function POST(request: Request) {
       }
     }
 
-    // Call Claude API
-    const modelString = getModelString(model || 'Claude Sonnet 4')
-    const claudeResponse = await anthropic.messages.create({
-      model: modelString,
-      max_tokens: 4096,
-      system: systemPrompt || 'You are a helpful AI assistant.',
-      messages: conversationMessages,
+    // ✅ CALL N8N WEBHOOK INSTEAD OF CLAUDE DIRECTLY
+    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL
+
+    if (!n8nWebhookUrl) {
+      console.error('❌ N8N_WEBHOOK_URL not configured')
+      return NextResponse.json({
+        success: false,
+        error: 'N8N webhook not configured'
+      }, { status: 500 })
+    }
+
+    console.log('📤 Calling N8N webhook:', n8nWebhookUrl)
+
+    const n8nResponse = await fetch(n8nWebhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message,
+        userId: actualUserId,
+        projectId,
+        projectSlug,
+        model: getModelString(model || 'Claude Sonnet 4'),
+        threadId: currentThreadId,
+        conversationHistory: conversationMessages,
+        systemPrompt: systemPrompt || 'You are a helpful AI assistant.',
+        fileUrls
+      })
     })
 
-    const aiReply = claudeResponse.content[0].type === 'text'
-      ? claudeResponse.content[0].text
-      : 'No response'
+    if (!n8nResponse.ok) {
+      const errorText = await n8nResponse.text()
+      console.error('❌ N8N webhook error:', errorText)
+      throw new Error(`N8N webhook failed: ${n8nResponse.status}`)
+    }
 
-    // Extract token usage
-    const inputTokens = claudeResponse.usage.input_tokens || 0
-    const outputTokens = claudeResponse.usage.output_tokens || 0
-    const estimatedCost = calculateCost(modelString, inputTokens, outputTokens)
+    const n8nData = await n8nResponse.json()
+    console.log('✅ N8N response received:', n8nData)
+
+    // Extract response from N8N (adjust based on your N8N workflow output)
+    const aiReply = n8nData.reply || n8nData.response || 'No response from N8N'
+    const inputTokens = n8nData.inputTokens || 0
+    const outputTokens = n8nData.outputTokens || 0
+    const estimatedCost = calculateCost(
+      getModelString(model || 'Claude Sonnet 4'),
+      inputTokens,
+      outputTokens
+    )
 
     console.log('📊 Token usage:', {
-      model: modelString,
+      model: model || 'Claude Sonnet 4',
       inputTokens,
       outputTokens,
       cost: estimatedCost
@@ -185,7 +209,7 @@ export async function POST(request: Request) {
       console.error('Assistant message error:', assistantMessageError)
     }
 
-    // Log usage to database
+    // Log usage
     const { error: usageError } = await supabase
       .from('usage_logs')
       .insert({
@@ -200,10 +224,10 @@ export async function POST(request: Request) {
     if (usageError) {
       console.error('❌ Usage logging error:', usageError)
     } else {
-      console.log('✅ Usage logged successfully for user:', actualUserId)
+      console.log('✅ Usage logged successfully')
     }
 
-    // Update thread's updated_at timestamp
+    // Update thread timestamp
     await supabase
       .from('chat_threads')
       .update({ updated_at: new Date().toISOString() })
