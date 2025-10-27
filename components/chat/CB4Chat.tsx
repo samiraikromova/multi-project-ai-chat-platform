@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
+import ReactMarkdown from 'react-markdown'
 
 interface Message {
   id: string
@@ -39,7 +40,7 @@ interface CB4ChatProps {
   projectSlug?: string
   projectEmoji?: string
   systemPrompt?: string
-  projectColor?: string
+  _projectColor?: string
 }
 
 export default function CB4Chat({
@@ -49,7 +50,7 @@ export default function CB4Chat({
   projectSlug = "cb4",
   projectEmoji = "🧠",
   systemPrompt = "",
-  projectColor = "#d97757"
+  _projectColor = "#d97757"
 }: CB4ChatProps) {
   const [message, setMessage] = useState("")
   const [messages, setMessages] = useState<Message[]>([])
@@ -57,7 +58,7 @@ export default function CB4Chat({
   const [currentThreadId, setCurrentThreadId] = useState<string | null>(null)
   const [currentThreadTitle, setCurrentThreadTitle] = useState("New Chat")
   const [loading, setLoading] = useState(false)
-  const [selectedModel, setSelectedModel] = useState('Claude Sonnet 4')
+  const [selectedModel, setSelectedModel] = useState('Claude Sonnet 4.5')
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('sidebarOpen')
@@ -73,7 +74,8 @@ export default function CB4Chat({
   const [isDragging, setIsDragging] = useState(false)
   const [userName, setUserName] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
-  const [allProjects, setAllProjects] = useState<Project[]>([])
+  const [_allProjects, _setAllProjects] = useState<Project[]>([])
+  const [contextWarning, setContextWarning] = useState(false)
 
   const supabase = createClient()
   const router = useRouter()
@@ -100,43 +102,41 @@ export default function CB4Chat({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-// Drag and drop handlers
-const handleDragEnter = (e: React.DragEvent) => {
-  e.preventDefault()
-  e.stopPropagation()
-  setIsDragging(true)
-}
-
-const handleDragLeave = (e: React.DragEvent) => {
-  e.preventDefault()
-  e.stopPropagation()
-  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-  const x = e.clientX
-  const y = e.clientY
-
-  // Only close if truly leaving the container
-  if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
-    setIsDragging(false)
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
   }
-}
 
-const handleDragOver = (e: React.DragEvent) => {
-  e.preventDefault()
-  e.stopPropagation()
-}
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const x = e.clientX
+    const y = e.clientY
 
-const handleDrop = (e: React.DragEvent) => {
-  e.preventDefault()
-  e.stopPropagation()
-  const files = Array.from(e.dataTransfer.files)
-  if (files.length > 0) {
-    handleFiles(files)
-    // Only close after successfully handling files
-    setTimeout(() => setIsDragging(false), 300)
-  } else {
-    setIsDragging(false)
+    if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
+      setIsDragging(false)
+    }
   }
-}
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) {
+      handleFiles(files)
+      setTimeout(() => setIsDragging(false), 300)
+    } else {
+      setIsDragging(false)
+    }
+  }
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) handleFiles(Array.from(e.target.files))
     setFileMenuOpen(false)
@@ -169,19 +169,6 @@ const handleDrop = (e: React.DragEvent) => {
     })
   }
 
-  // Load all projects
-  useEffect(() => {
-    async function fetchProjects() {
-      const { data } = await supabase
-        .from('projects')
-        .select('id, slug, icon')
-        .eq('is_active', true)
-        .order('created_at', { ascending: true })
-      if (data) setAllProjects(data)
-    }
-    fetchProjects()
-  }, [supabase])
-
   // Load threads for THIS specific project
   const loadThreads = useCallback(async () => {
     const { data } = await supabase
@@ -211,6 +198,21 @@ const handleDrop = (e: React.DragEvent) => {
 
   useEffect(() => { loadThreads() }, [loadThreads])
   useEffect(() => { loadMessages() }, [loadMessages])
+
+  // Check context size and show warning
+  useEffect(() => {
+    const totalMessages = messages.length
+    const estimatedTokens = messages.reduce((sum, msg) =>
+      sum + Math.ceil(msg.content.length / 4), 0
+    )
+
+    // Show warning if context exceeds 20k tokens or 50 messages
+    if (estimatedTokens > 20000 || totalMessages > 50) {
+      setContextWarning(true)
+    } else {
+      setContextWarning(false)
+    }
+  }, [messages])
 
   const createNewThread = async () => {
     setCurrentThreadId(null)
@@ -338,11 +340,11 @@ const handleDrop = (e: React.DragEvent) => {
   }
 
   const models = [
-    { name: 'Claude Sonnet 4', provider: 'Anthropic' },
-    { name: 'GPT-4o', provider: 'OpenAI' },
+    { name: 'Claude Sonnet 4.5', provider: 'Anthropic' },
+    { name: 'GPT-5', provider: 'OpenAI' },
     { name: 'Gemini Pro', provider: 'Google' },
-    { name: 'Deepseek', provider: 'Deepseek' },
-    { name: 'xAI', provider: 'xAI' },
+    { name: 'DeepSeek R1', provider: 'DeepSeek' },
+    { name: 'Grok 4', provider: 'xAI' },
   ]
 
   const formatFileSize = (bytes: number) => {
@@ -353,15 +355,12 @@ const handleDrop = (e: React.DragEvent) => {
 
   return (
     <div className="flex h-screen bg-[#f7f5ef] relative" onDragEnter={handleDragEnter} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
-      {/* Drag overlay */}
       {isDragging && (
         <div className="absolute inset-0 bg-[#f7f5ef]/95 backdrop-blur-sm z-50 flex items-center justify-center pointer-events-none">
           <div className="text-center pointer-events-auto">
-            <div
-                className="w-32 h-32 border-4 border-dashed border-[#d97757] rounded-2xl mx-auto mb-6 flex items-center justify-center">
+            <div className="w-32 h-32 border-4 border-dashed border-[#d97757] rounded-2xl mx-auto mb-6 flex items-center justify-center">
               <svg width="48" height="48" viewBox="0 0 48 48" fill="#d97757">
-                <path d="M24 8v24M12 20l12-12 12 12" stroke="currentColor" strokeWidth="3" fill="none"
-                      strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M24 8v24M12 20l12-12 12 12" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </div>
             <p className="text-[20px] font-medium text-[#2d2d2d]">Drop files here to add to chat</p>
@@ -374,67 +373,68 @@ const handleDrop = (e: React.DragEvent) => {
 
       {/* Sidebar */}
       <aside className={`${sidebarOpen ? 'w-[260px]' : 'w-[60px]'} bg-[#f7f5ef] border-r border-[#e0ddd4] flex flex-col transition-all duration-300 flex-shrink-0`}>
-        {/* Collapsed Sidebar */}
         {!sidebarOpen && (
-          <div className="flex flex-col h-full items-center py-3 gap-2">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="w-10 h-10 rounded-lg hover:bg-[#e8e6df] transition-colors flex items-center justify-center text-[#6b6b6b]"
-              title="Open sidebar"
-            >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
-                <line x1="8" y1="4" x2="8" y2="16" stroke="currentColor" strokeWidth="1.5"/>
-              </svg>
-            </button>
-
-            <button
-              onClick={createNewThread}
-              className="w-10 h-10 rounded-full bg-[#d97757] hover:bg-[#c86545] transition-colors flex items-center justify-center text-white"
-              title="New chat"
-            >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M10 5v10M5 10h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-            </button>
-
-            {threads.length > 0 && (
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="w-10 h-10 rounded-lg hover:bg-[#e8e6df] transition-colors flex items-center justify-center text-[#6b6b6b]"
-                title="View chats"
-              >
+            <div className="flex flex-col h-full items-center py-3 gap-2">
+              <button onClick={() => setSidebarOpen(true)}
+                      className="w-10 h-10 rounded-lg hover:bg-[#e8e6df] transition-colors flex items-center justify-center text-[#6b6b6b]"
+                      title="Open sidebar">
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <path d="M3 7h14M3 10h14M3 13h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  <rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
+                  <line x1="8" y1="4" x2="8" y2="16" stroke="currentColor" strokeWidth="1.5"/>
                 </svg>
               </button>
-            )}
 
-            <div className="flex-1"></div>
-
-
-
-            {/* User avatar */}
-            <div className="relative" ref={userDropdownRef}>
               <button
-                onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                className="w-10 h-10 rounded-full flex items-center justify-center text-white text-[13px] font-medium hover:opacity-80 transition-opacity"
-                style={{ backgroundColor: '#d97757' }}
+                  onClick={() => router.push('/dashboard')}
+                  className="w-10 h-10 rounded-lg hover:bg-[#e8e6df] transition-colors flex items-center justify-center text-[#6b6b6b]"
+                  title="Dashboard"
               >
-                {userName ? userName.charAt(0).toUpperCase() : (userEmail?.charAt(0).toUpperCase() || 'U')}
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <rect x="3" y="3" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/>
+                  <rect x="11" y="3" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/>
+                  <rect x="3" y="11" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/>
+                  <rect x="11" y="11" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/>
+                </svg>
               </button>
-              {userDropdownOpen && (
-              <div className="absolute bottom-full left-12 mb-2 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 w-48 z-50">
-                <button onClick={handleLogout} className="w-full px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors">
-                  Logout
+
+              <button onClick={createNewThread}
+                      className="w-10 h-10 rounded-full bg-[#d97757] hover:bg-[#c86545] transition-colors flex items-center justify-center text-white"
+                      title="New chat">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <path d="M10 5v10M5 10h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+              </button>
+
+              {threads.length > 0 && (
+                  <button onClick={() => setSidebarOpen(true)}
+                          className="w-10 h-10 rounded-lg hover:bg-[#e8e6df] transition-colors flex items-center justify-center text-[#6b6b6b]"
+                          title="View chats">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                      <path d="M3 7h14M3 10h14M3 13h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                  </button>
+              )}
+
+              <div className="flex-1"></div>
+
+              <div className="relative" ref={userDropdownRef}>
+                <button onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-white text-[13px] font-medium hover:opacity-80 transition-opacity"
+                        style={{backgroundColor: '#d97757'}}>
+                  {userName ? userName.charAt(0).toUpperCase() : (userEmail?.charAt(0).toUpperCase() || 'U')}
                 </button>
+                {userDropdownOpen && (
+                    <div
+                        className="absolute bottom-full left-12 mb-2 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 w-48 z-50">
+                      <button onClick={handleLogout}
+                              className="w-full px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors">Logout
+                      </button>
+                    </div>
+                )}
               </div>
-            )}
             </div>
-          </div>
         )}
 
-        {/* Expanded Sidebar */}
         {sidebarOpen && (
           <>
             <div className="p-3 border-b border-[#e0ddd4] flex items-center justify-between">
@@ -442,36 +442,27 @@ const handleDrop = (e: React.DragEvent) => {
                 <span className="text-xl">{projectEmoji}</span>
                 <h2 className="text-[15px] font-semibold text-[#2d2d2d]">{projectName}</h2>
               </div>
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="p-1.5 hover:bg-[#e8e6df] rounded-lg transition-colors"
-                title="Close sidebar"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <button onClick={() => setSidebarOpen(false)} className="p-1.5 hover:bg-[#e8e6df] rounded-lg transition-colors" title="Close sidebar">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
+                  <line x1="8" y1="4" x2="8" y2="16" stroke="currentColor" strokeWidth="1.5"/>
                 </svg>
               </button>
             </div>
 
             <div className="p-3 space-y-2">
-              <button
-                onClick={createNewThread}
-                className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[#d97757] hover:bg-[#c86545] transition-colors text-[14px] text-white font-medium"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M8 4v8M4 8h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-                New Chat
-              </button>
-
-              <button
-                onClick={() => router.push('/dashboard')}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors text-[13px] text-[#6b6b6b]"
-              >
+              <button onClick={() => router.push('/dashboard')} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors text-[13px] text-[#6b6b6b]">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                   <path d="M14 8H2M6 4l-4 4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
                 All Projects
+              </button>
+
+              <button onClick={createNewThread} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[#d97757] hover:bg-[#c86545] transition-colors text-[14px] text-white font-medium">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M8 4v8M4 8h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+                New Chat
               </button>
             </div>
 
@@ -481,22 +472,12 @@ const handleDrop = (e: React.DragEvent) => {
               )}
               {threads.map(thread => (
                 <div key={thread.id} className="relative group mb-1">
-                  <button
-                    onClick={() => setCurrentThreadId(thread.id)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-[13px] transition-colors ${
-                      currentThreadId === thread.id
-                        ? 'bg-[#e8e6df] text-[#2d2d2d] font-medium'
-                        : 'text-[#6b6b6b] hover:bg-[#e8e6df]/50'
-                    }`}
-                  >
+                  <button onClick={() => setCurrentThreadId(thread.id)} className={`w-full text-left px-3 py-2 rounded-lg text-[13px] transition-colors ${currentThreadId === thread.id ? 'bg-[#e8e6df] text-[#2d2d2d] font-medium' : 'text-[#6b6b6b] hover:bg-[#e8e6df]/50'}`}>
                     <div className="truncate">{thread.title}</div>
                   </button>
                   {currentThreadId === thread.id && (
                     <div className="absolute right-2 top-2">
-                      <button
-                        onClick={() => setDeleteMenuOpen(deleteMenuOpen === thread.id ? null : thread.id)}
-                        className="p-1 hover:bg-[#f7f5ef] rounded transition-colors"
-                      >
+                      <button onClick={() => setDeleteMenuOpen(deleteMenuOpen === thread.id ? null : thread.id)} className="p-1 hover:bg-[#f7f5ef] rounded transition-colors">
                         <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
                           <circle cx="7" cy="3" r="1"/>
                           <circle cx="7" cy="7" r="1"/>
@@ -505,12 +486,7 @@ const handleDrop = (e: React.DragEvent) => {
                       </button>
                       {deleteMenuOpen === thread.id && (
                         <div className="absolute right-0 top-full mt-1 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 w-32 z-50" ref={deleteMenuRef}>
-                          <button
-                            onClick={() => deleteThread(thread.id)}
-                            className="w-full px-3 py-1.5 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors"
-                          >
-                            Delete
-                          </button>
+                          <button onClick={() => deleteThread(thread.id)} className="w-full px-3 py-1.5 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors">Delete</button>
                         </div>
                       )}
                     </div>
@@ -519,25 +495,14 @@ const handleDrop = (e: React.DragEvent) => {
               ))}
             </div>
 
-            {/* Project icons section */}
             <div className="border-t border-[#e0ddd4] p-3">
-
-
               <div className="relative" ref={userDropdownRef}>
-                <button
-                  onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors"
-                >
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[13px] font-medium flex-shrink-0"
-                    style={{ backgroundColor: '#d97757' }}
-                  >
+                <button onClick={() => setUserDropdownOpen(!userDropdownOpen)} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[13px] font-medium flex-shrink-0" style={{ backgroundColor: '#d97757' }}>
                     {userName ? userName.charAt(0).toUpperCase() : (userEmail?.charAt(0).toUpperCase() || 'U')}
                   </div>
                   <div className="flex-1 text-left min-w-0">
-                    <div className="text-[13px] text-[#2d2d2d] truncate font-medium">
-                      {userName || userEmail || 'User'}
-                    </div>
+                    <div className="text-[13px] text-[#2d2d2d] truncate font-medium">{userName || userEmail || 'User'}</div>
                   </div>
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="flex-shrink-0">
                     <path d="M6 8L3 5h6L6 8z"/>
@@ -549,12 +514,7 @@ const handleDrop = (e: React.DragEvent) => {
                       <div className="text-[13px] text-[#2d2d2d] font-medium truncate">{userName || 'User'}</div>
                       <div className="text-[11px] text-[#8b8b8b] truncate">{userEmail}</div>
                     </div>
-                    <button
-                      onClick={handleLogout}
-                      className="w-full px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors"
-                    >
-                      Logout
-                    </button>
+                    <button onClick={handleLogout} className="w-full px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors">Logout</button>
                   </div>
                 )}
               </div>
@@ -566,12 +526,24 @@ const handleDrop = (e: React.DragEvent) => {
       {/* Main chat area */}
       <main className="flex-1 flex flex-col min-w-0">
         <header className="bg-[#f7f5ef] border-b border-[#e0ddd4] px-6 py-3 flex items-center gap-4">
-
           <span className="text-xl">{projectEmoji}</span>
           <h2 className="text-[15px] font-medium text-[#2d2d2d]">{currentThreadTitle}</h2>
         </header>
 
-        {/* Messages */}
+        {/* Context Warning */}
+        {contextWarning && (
+          <div className="bg-[#fff3cd] border-b border-[#ffc107] px-6 py-3">
+            <div className="max-w-[800px] mx-auto flex items-center gap-3">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="#856404">
+                <path d="M10 2L2 18h16L10 2zm0 3l6 11H4l6-11zm0 3v4h1V8h-1zm0 5v1h1v-1h-1z"/>
+              </svg>
+              <p className="text-[14px] text-[#856404]">
+                <strong>Warning:</strong> Longer chats will use credits faster due to increased context
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-[800px] mx-auto px-6 py-8">
             {messages.length === 0 ? (
@@ -583,21 +555,26 @@ const handleDrop = (e: React.DragEvent) => {
             ) : (
               <div className="space-y-6">
                 {messages.map(msg => (
-                  <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'text-white bg-[#d97757]' : 'bg-white border border-[#e0ddd4] text-[#2d2d2d]'}`}>
                     <div
-                        className={`max-w-[85%] rounded-2xl px-4 py-3 ${
-                            msg.role === 'user' ? 'text-white bg-[#d97757]' : 'bg-white border border-[#e0ddd4] text-[#2d2d2d]'
-                        }`}
-                    >
-                      <p className="text-[15px] leading-[1.6] whitespace-pre-wrap">{msg.content}</p>
-                    </div>
+                      className="text-[15px] leading-[1.6]"
+                      dangerouslySetInnerHTML={{
+                        __html: String(msg.content || '')
+                          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                          .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                          .replace(/`(.*?)`/g, '<code class="bg-[#f5f5f5] px-1 py-0.5 rounded text-[14px]">$1</code>')
+                          .replace(/\n/g, '<br>')
+                      }}
+                    />
                   </div>
-                ))}
+                </div>
+              ))}
                 {loading && (
-                    <div className="flex justify-start">
-                      <div className="bg-white border border-[#e0ddd4] rounded-2xl px-4 py-3">
-                        <div className="flex gap-1.5">
-                          <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: '#d97757' }}/>
+                  <div className="flex justify-start">
+                    <div className="bg-white border border-[#e0ddd4] rounded-2xl px-4 py-3">
+                      <div className="flex gap-1.5">
+                        <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: '#d97757' }}/>
                         <div className="w-2 h-2 rounded-full animate-bounce delay-100" style={{ backgroundColor: '#d97757' }}/>
                         <div className="w-2 h-2 rounded-full animate-bounce delay-200" style={{ backgroundColor: '#d97757' }}/>
                       </div>
@@ -625,10 +602,7 @@ const handleDrop = (e: React.DragEvent) => {
                       <div className="text-[#2d2d2d] font-medium max-w-[150px] truncate">{file.name}</div>
                       <div className="text-[#8b8b8b]">{formatFileSize(file.size)}</div>
                     </div>
-                    <button
-                      onClick={() => removeFile(file.id)}
-                      className="absolute top-1 right-1 w-5 h-5 bg-[#f5f5f5] hover:bg-[#e0ddd4] rounded-full flex items-center justify-center text-[#6b6b6b] hover:text-[#2d2d2d] transition-colors"
-                    >
+                    <button onClick={() => removeFile(file.id)} className="absolute top-1 right-1 w-5 h-5 bg-[#f5f5f5] hover:bg-[#e0ddd4] rounded-full flex items-center justify-center text-[#6b6b6b] hover:text-[#2d2d2d] transition-colors">
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                         <path d="M9 3L3 9M3 3l6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                       </svg>
@@ -640,64 +614,34 @@ const handleDrop = (e: React.DragEvent) => {
 
             <div className="bg-white border-2 border-[#e0ddd4] rounded-2xl shadow-sm focus-within:border-[#d97757] transition-colors flex items-center gap-2 px-4 py-3">
               <div className="relative" ref={fileMenuRef}>
-                <button
-                  onClick={() => setFileMenuOpen(!fileMenuOpen)}
-                  className="p-2 text-[#6b6b6b] hover:bg-[#f5f5f5] rounded-lg transition-colors"
-                  title="Add file"
-                >
+                <button onClick={() => setFileMenuOpen(!fileMenuOpen)} className="p-2 text-[#6b6b6b] hover:bg-[#f5f5f5] rounded-lg transition-colors" title="Add file">
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                     <path d="M10 5v10M5 10h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                   </svg>
                 </button>
                 {fileMenuOpen && (
                   <div className="absolute bottom-full left-0 mb-2 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 w-48 z-50">
-                    <button
-                      onClick={() => {
-                        fileInputRef.current?.click()
-                        setFileMenuOpen(false)
-                      }}
-                      className="w-full px-4 py-2 text-left text-[14px] hover:bg-[#f5f5f5] transition-colors"
-                    >
+                    <button onClick={() => { fileInputRef.current?.click(); setFileMenuOpen(false); }} className="w-full px-4 py-2 text-left text-[14px] hover:bg-[#f5f5f5] transition-colors">
                       Upload file
                     </button>
                   </div>
                 )}
               </div>
 
-              <input
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyPress={handleKeyPress}
-                disabled={loading}
-                className="flex-1 outline-none text-[15px] text-[#2d2d2d] bg-transparent placeholder:text-[#999]"
-                placeholder={`Message ${projectName}...`}
-              />
+              <input value={message} onChange={(e) => setMessage(e.target.value)} onKeyPress={handleKeyPress} disabled={loading} className="flex-1 outline-none text-[15px] text-[#2d2d2d] bg-transparent placeholder:text-[#999]" placeholder={`Message ${projectName}...`} />
 
               <div className="relative" ref={modelDropdownRef}>
-                <button
-                  onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-                  className="flex items-center gap-1 text-[13px] text-[#6b6b6b] hover:bg-[#f5f5f5] px-3 py-1.5 rounded transition-colors"
-                >
+                <button onClick={() => setModelDropdownOpen(!modelDropdownOpen)} className="flex items-center gap-1 text-[13px] text-[#6b6b6b] hover:bg-[#f5f5f5] px-3 py-1.5 rounded transition-colors">
                   {selectedModel}
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                     <path d="M6 8L3 5h6L6 8z"/>
                   </svg>
                 </button>
                 {modelDropdownOpen && (
-                  <div className="absolute right-0 bottom-full mb-2 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-2 w-56 z-50">
+                  <div className="absolute right-0 bottom-full mb-2 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-2 w-48 z-50">
                     {models.map(model => (
-                      <button
-                        key={model.name}
-                        onClick={() => {
-                          setSelectedModel(model.name)
-                          setModelDropdownOpen(false)
-                        }}
-                        className="w-full px-4 py-2 text-left hover:bg-[#f5f5f5] transition-colors flex items-center justify-between"
-                      >
-                        <div>
-                          <div className="text-[14px] text-[#2d2d2d] font-medium">{model.name}</div>
-                          <div className="text-[12px] text-[#8b8b8b]">{model.provider}</div>
-                        </div>
+                      <button key={model.name} onClick={() => { setSelectedModel(model.name); setModelDropdownOpen(false); }} className="w-full px-4 py-2 text-left hover:bg-[#f5f5f5] transition-colors flex items-center justify-between">
+                        <div className="text-[14px] text-[#2d2d2d] font-medium">{model.name}</div>
                         {selectedModel === model.name && (
                           <svg width="16" height="16" viewBox="0 0 16 16" fill="#d97757">
                             <path d="M13 4L6 11 3 8l1-1 2 2 6-6 1 1z"/>
@@ -709,12 +653,10 @@ const handleDrop = (e: React.DragEvent) => {
                 )}
               </div>
 
-              <button
-                onClick={sendMessage}
-                disabled={loading}
-                className="bg-[#d97757] hover:bg-[#c86545] text-white rounded-xl px-4 py-2 text-[14px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Send
+              <button onClick={sendMessage} disabled={loading} className="w-10 h-10 bg-[#d97757] hover:bg-[#c86545] text-white rounded-xl flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <path d="M10 15V5M5 10l5-5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
               </button>
             </div>
           </div>

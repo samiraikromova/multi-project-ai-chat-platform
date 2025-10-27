@@ -1,17 +1,17 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { createClient } from '@/lib/supabase/server'
-
-
 
 // Calculate token cost based on model
 function calculateCost(model: string, inputTokens: number, outputTokens: number): number {
   const pricing: Record<string, { input: number; output: number }> = {
+    'claude-sonnet-4.5-20250514': { input: 0.003, output: 0.015 },
     'claude-sonnet-4-20250514': { input: 0.003, output: 0.015 },
-    'claude-3-5-sonnet-20241022': { input: 0.003, output: 0.015 },
-    'claude-opus-4-20250514': { input: 0.015, output: 0.075 },
+    'gpt-5': { input: 0.005, output: 0.015 },
     'gpt-4o': { input: 0.0025, output: 0.01 },
     'gemini-pro': { input: 0.00125, output: 0.00375 },
+    'deepseek-r1': { input: 0.00014, output: 0.00028 },
     'deepseek-chat': { input: 0.0001, output: 0.0002 },
+    'grok-4': { input: 0.00002, output: 0.00002 },
     'grok-beta': { input: 0.00001, output: 0.00001 },
   }
 
@@ -21,15 +21,17 @@ function calculateCost(model: string, inputTokens: number, outputTokens: number)
 
 function getModelString(modelName: string): string {
   const modelMap: Record<string, string> = {
+    'Claude Sonnet 4.5': 'claude-sonnet-4.5-20250514',
     'Claude Sonnet 4': 'claude-sonnet-4-20250514',
-    'Claude Sonnet 3.5': 'claude-3-5-sonnet-20241022',
-    'Claude Opus 4': 'claude-opus-4-20250514',
+    'GPT-5': 'gpt-5',
     'GPT-4o': 'gpt-4o',
     'Gemini Pro': 'gemini-pro',
+    'DeepSeek R1': 'deepseek-r1',
     'Deepseek': 'deepseek-chat',
+    'Grok 4': 'grok-4',
     'xAI': 'grok-beta',
   }
-  return modelMap[modelName] || 'claude-sonnet-4-20250514'
+  return modelMap[modelName] || 'claude-sonnet-4.5-20250514'
 }
 
 export async function POST(request: Request) {
@@ -39,7 +41,7 @@ export async function POST(request: Request) {
       message,
       userId,
       projectId,
-      projectSlug,
+      projectSlug: _projectSlug,
       model,
       threadId,
       fileUrls = [],
@@ -57,7 +59,7 @@ export async function POST(request: Request) {
     const { data: { user } } = await supabase.auth.getUser()
     const actualUserId = user?.id || userId
 
-    // Get or create thread (keep your existing code)
+    // Get or create thread
     let currentThreadId = threadId
     let threadTitle = 'New Chat'
 
@@ -71,7 +73,7 @@ export async function POST(request: Request) {
           user_id: actualUserId,
           project_id: projectId,
           title: threadTitle,
-          model: model || 'Claude Sonnet 4',
+          model: model || 'Claude Sonnet 4.5',
         })
         .select()
         .single()
@@ -137,7 +139,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // ✅ CALL N8N WEBHOOK INSTEAD OF CLAUDE DIRECTLY
+    // Call N8N webhook
     const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL
 
     if (!n8nWebhookUrl) {
@@ -159,8 +161,8 @@ export async function POST(request: Request) {
         message,
         userId: actualUserId,
         projectId,
-        projectSlug,
-        model: getModelString(model || 'Claude Sonnet 4'),
+        projectSlug: _projectSlug,
+        model: getModelString(model || 'Claude Sonnet 4.5'),
         threadId: currentThreadId,
         conversationHistory: conversationMessages,
         systemPrompt: systemPrompt || 'You are a helpful AI assistant.',
@@ -177,18 +179,60 @@ export async function POST(request: Request) {
     const n8nData = await n8nResponse.json()
     console.log('✅ N8N response received:', n8nData)
 
-    // Extract response from N8N (adjust based on your N8N workflow output)
-    const aiReply = n8nData.reply || n8nData.response || 'No response from N8N'
-    const inputTokens = n8nData.inputTokens || 0
-    const outputTokens = n8nData.outputTokens || 0
-    const estimatedCost = calculateCost(
-      getModelString(model || 'Claude Sonnet 4'),
-      inputTokens,
-      outputTokens
-    )
+    // Extract response from N8N - handle nested array format
+    let aiReply = 'No response from N8N'
+
+    if (Array.isArray(n8nData) && n8nData.length > 0) {
+      // N8N returns array with single object
+      const responseData = n8nData[0]
+
+      if (typeof responseData.reply === 'string') {
+        aiReply = responseData.reply
+      } else if (Array.isArray(responseData.reply)) {
+        const textBlock = responseData.reply.find((block: any) => block.type === 'text')
+        aiReply = textBlock?.text || 'No text response'
+      } else if (responseData.output) {
+        aiReply = responseData.output
+      }
+
+      const inputTokens = responseData.usage?.tokens || 0
+      const outputTokens = responseData.usage?.tokens || 0
+      const estimatedCost = responseData.usage?.cost || calculateCost(
+        getModelString(model || 'Claude Sonnet 4.5'),
+        inputTokens,
+        outputTokens
+      )
+    } else if (typeof n8nData.reply === 'string') {
+      aiReply = n8nData.reply
+    }
+
+    // Extract tokens and cost from N8N response
+    let inputTokens = 0
+    let outputTokens = 0
+    let estimatedCost = 0
+
+    if (Array.isArray(n8nData) && n8nData.length > 0) {
+      const responseData = n8nData[0]
+
+      // Get usage data from N8N
+      if (responseData.usage) {
+        inputTokens = responseData.usage.input_tokens || responseData.usage.tokens || 0
+        outputTokens = responseData.usage.output_tokens || responseData.usage.tokens || 0
+        estimatedCost = responseData.usage.cost || 0
+      }
+    }
+
+    // Fallback calculation if N8N doesn't provide usage
+    if (estimatedCost === 0 && (inputTokens > 0 || outputTokens > 0)) {
+      estimatedCost = calculateCost(
+        getModelString(model || 'Claude Sonnet 4.5'),
+        inputTokens,
+        outputTokens
+      )
+    }
 
     console.log('📊 Token usage:', {
-      model: model || 'Claude Sonnet 4',
+      model: model || 'Claude Sonnet 4.5',
       inputTokens,
       outputTokens,
       cost: estimatedCost
@@ -209,22 +253,27 @@ export async function POST(request: Request) {
       console.error('Assistant message error:', assistantMessageError)
     }
 
-    // Log usage
+    // Log usage with proper data types
     const { error: usageError } = await supabase
       .from('usage_logs')
       .insert({
         user_id: actualUserId,
         thread_id: currentThreadId,
-        model: model || 'Claude Sonnet 4',
-        tokens_input: inputTokens,
-        tokens_output: outputTokens,
-        estimated_cost: estimatedCost,
+        model: model || 'Claude Sonnet 4.5',
+        tokens_input: parseInt(String(inputTokens)) || 0,
+        tokens_output: parseInt(String(outputTokens)) || 0,
+        estimated_cost: parseFloat(String(estimatedCost)) || 0,
       })
 
     if (usageError) {
       console.error('❌ Usage logging error:', usageError)
     } else {
-      console.log('✅ Usage logged successfully')
+      console.log('✅ Usage logged successfully:', {
+        user_id: actualUserId,
+        tokens_input: inputTokens,
+        tokens_output: outputTokens,
+        cost: estimatedCost
+      })
     }
 
     // Update thread timestamp
@@ -254,3 +303,6 @@ export async function POST(request: Request) {
     }, { status: 500 })
   }
 }
+
+
+

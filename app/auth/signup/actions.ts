@@ -3,7 +3,6 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { isAdminEmail } from '@/lib/adminList'
 
 export async function signup(formData: FormData) {
   const supabase = await createClient()
@@ -20,7 +19,6 @@ export async function signup(formData: FormData) {
     options: {
       data: {
         full_name: fullName,
-        is_admin: isAdminEmail(email)
       }
     }
   })
@@ -32,8 +30,24 @@ export async function signup(formData: FormData) {
 
   if (data.user) {
     console.log('✅ User created:', data.user.id)
+
+    // Auto-add to allowed_users
+    const { error: allowError } = await supabase
+      .from('allowed_users')
+      .insert({
+        email: email,
+        is_active: true,
+        reason: 'signup'
+      })
+
+    if (allowError) {
+      console.error('❌ Failed to add to allowed_users:', allowError)
+    } else {
+      console.log('✅ User added to allowed_users')
+    }
+
     revalidatePath('/', 'layout')
-    redirect('/dashboard') // ✅ Redirect to dashboard after signup
+    redirect('/dashboard')
   }
 
   return { error: 'Signup failed' }

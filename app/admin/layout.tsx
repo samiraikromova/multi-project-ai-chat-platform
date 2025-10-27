@@ -20,21 +20,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const { data: { user }, error: userError } = await supabase.auth.getUser()
 
     if (userError || !user || !user.email) {
-      console.log('No user found')
       router.push('/auth/login')
       return
     }
 
-    // Check if email is in admin list (now async)
-    const isAdmin = await isAdminEmail(user.email)
-    if (!isAdmin) {
-      console.log('Not an admin email')
+    // Check admin_users table instead of file
+    const { data: adminUser } = await supabase
+      .from('admin_users')
+      .select('email')
+      .eq('email', user.email)
+      .maybeSingle()
+
+    if (!adminUser) {
       alert('Access denied. Admin privileges required.')
       router.push('/dashboard')
       return
     }
 
-    console.log('Admin access granted')
     setIsAdmin(true)
   } catch (err) {
     console.error('Auth check error:', err)
