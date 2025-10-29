@@ -577,61 +577,81 @@ export default function CB4Chat({
               </div>
             )}
 
-            <div className="bg-white border-2 border-[#e0ddd4] rounded-2xl shadow-sm focus-within:border-[#d97757] transition-colors flex items-center gap-2 px-4 py-3">
+            <div
+                className="bg-white border-2 border-[#e0ddd4] rounded-2xl shadow-sm focus-within:border-[#d97757] transition-colors flex items-center gap-2 px-4 py-3">
               <div className="relative" ref={fileMenuRef}>
-                <button onClick={() => setFileMenuOpen(!fileMenuOpen)} className="p-2 text-[#6b6b6b] hover:bg-[#f5f5f5] rounded-lg transition-colors" title="Add file">
+                <button onClick={() => setFileMenuOpen(!fileMenuOpen)}
+                        className="p-2 text-[#6b6b6b] hover:bg-[#f5f5f5] rounded-lg transition-colors" title="Add file">
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                     <path d="M10 5v10M5 10h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                   </svg>
                 </button>
                 {fileMenuOpen && (
-                  <div className="absolute bottom-full left-0 mb-2 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 w-48 z-50">
-                    <button onClick={() => { fileInputRef.current?.click(); setFileMenuOpen(false); }} className="w-full px-4 py-2 text-left text-[14px] hover:bg-[#f5f5f5] transition-colors">
-                      Upload file
-                    </button>
-                  </div>
+                    <div
+                        className="absolute bottom-full left-0 mb-2 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 w-48 z-50">
+                      <button onClick={() => {
+                        fileInputRef.current?.click();
+                        setFileMenuOpen(false);
+                      }} className="w-full px-4 py-2 text-left text-[14px] hover:bg-[#f5f5f5] transition-colors">
+                        Upload file
+                      </button>
+                    </div>
                 )}
               </div>
 
               <textarea
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={handleKeyPress}
-                disabled={loading}
-                rows={1}
-                className="flex-1 outline-none text-[15px] text-[#2d2d2d] bg-transparent placeholder:text-[#999] resize-none max-h-[200px] overflow-y-auto"
-                placeholder={`Message ${projectName}...`}
+                  value={message}
+                  onChange={(e) => {
+                    setMessage(e.target.value)
+                    // Auto-resize textarea
+                    e.target.style.height = 'auto'
+                    e.target.style.height = e.target.scrollHeight + 'px'
+                  }}
+                  onKeyDown={handleKeyPress}
+                  disabled={loading}
+                  rows={1}
+                  className="flex-1 outline-none text-[15px] text-[#2d2d2d] bg-transparent placeholder:text-[#999] resize-none max-h-[200px] overflow-y-auto"
+                  placeholder={`Message ${projectName}...`}
+                  style={{minHeight: '24px'}}
               />
 
               <div className="relative" ref={modelDropdownRef}>
-                <button onClick={() => setModelDropdownOpen(!modelDropdownOpen)} className="flex items-center gap-1 text-[13px] text-[#6b6b6b] hover:bg-[#f5f5f5] px-3 py-1.5 rounded transition-colors">
+                <button onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
+                        className="flex items-center gap-1 text-[13px] text-[#6b6b6b] hover:bg-[#f5f5f5] px-3 py-1.5 rounded transition-colors">
                   {selectedModel}
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                     <path d="M6 8L3 5h6L6 8z"/>
                   </svg>
                 </button>
                 {modelDropdownOpen && (
-                  <div className="absolute right-0 bottom-full mb-2 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-2 w-48 z-50">
-                    {models.map(model => (
-                      <button key={model.name} onClick={() => { setSelectedModel(model.name); setModelDropdownOpen(false); }} className="w-full px-4 py-2 text-left hover:bg-[#f5f5f5] transition-colors flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="text-[14px] text-[#2d2d2d] font-medium">{model.name}</div>
-                          <div className="text-[11px] text-[#8b8b8b]">{model.tier}</div>
-                        </div>
-                        {selectedModel === model.name && (
-                          <svg width="16" height="16" viewBox="0 0 16 16" fill="#d97757">
-                            <path d="M13 4L6 11 3 8l1-1 2 2 6-6 1 1z"/>
-                          </svg>
-                        )}
-                      </button>
-                    ))}
-                  </div>
+                    <div
+                        className="absolute right-0 bottom-full mb-2 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-2 w-48 z-50">
+                      {models.map(model => (
+                          <button key={model.name} onClick={() => {
+                            setSelectedModel(model.name);
+                            setModelDropdownOpen(false);
+                          }}
+                                  className="w-full px-4 py-2 text-left hover:bg-[#f5f5f5] transition-colors flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="text-[14px] text-[#2d2d2d] font-medium">{model.name}</div>
+                              <div className="text-[11px] text-[#8b8b8b]">{model.tier}</div>
+                            </div>
+                            {selectedModel === model.name && (
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="#d97757">
+                                  <path d="M13 4L6 11 3 8l1-1 2 2 6-6 1 1z"/>
+                                </svg>
+                            )}
+                          </button>
+                      ))}
+                    </div>
                 )}
               </div>
 
-              <button onClick={sendMessage} disabled={loading} className="w-10 h-10 bg-[#d97757] hover:bg-[#c86545] text-white rounded-xl flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              <button onClick={sendMessage} disabled={loading}
+                      className="w-10 h-10 bg-[#d97757] hover:bg-[#c86545] text-white rounded-xl flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <path d="M10 15V5M5 10l5-5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M10 15V5M5 10l5-5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                        strokeLinejoin="round"/>
                 </svg>
               </button>
             </div>
