@@ -18,40 +18,65 @@ export default function UsagePage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [totalCost, setTotalCost] = useState(0)
   const logsPerPage = 20
+  const [usageData, setUsageData] = useState<any[]>([])
 
   const fetchUsage = useCallback(async () => {
-    try {
-      const { data: usageData, error } = await supabase
-        .from("usage_logs")
-        .select("*, users(name, email)")
-        .order("created_at", { ascending: false })
+  try {
+    const { data: usageData, error } = await supabase
+  .from("usage_logs")
+  .select("*, users(name, email)")
+  .order("created_at", { ascending: false })
 
-      if (error) throw error
 
-      const { data: usersData } = await supabase
-        .from("users")
-        .select("id, name, email")
-        .order("name", { ascending: true })
+    if (error) throw error
 
-      setUsers(usersData || [])
-      setLogs(usageData || [])
-      setFilteredLogs(usageData || [])
+    console.log('📊 Sample log:', usageData?.[0]) // Debug: check actual column names
 
-      // Calculate total cost
-      const cost = (usageData || []).reduce((sum: number, log: any) =>
-        sum + (parseFloat(log.estimated_cost) || 0), 0)
-      setTotalCost(cost)
-    } catch (err: any) {
-      console.error(err)
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }, [supabase])
+    const { data: usersData } = await supabase
+      .from("users")
+      .select("id, name, email")
+      .order("name", { ascending: true })
+
+    setUsers(usersData || [])
+    setLogs(usageData || [])
+    setFilteredLogs(usageData || [])
+
+    // Calculate total cost
+    const cost = (usageData || []).reduce((sum: number, log: any) =>
+      sum + (parseFloat(log.cost || log.estimated_cost) || 0), 0)
+    setTotalCost(cost)
+  } catch (err: any) {
+    console.error(err)
+    setError(err.message)
+  } finally {
+    setLoading(false)
+  }
+}, [supabase])
 
   useEffect(() => {
+    const fetchUsage = async () => {
+      setLoading(true)
+      const supabase = createClient()
+
+      // 1️⃣ Fetch usage logs from Supabase
+      const { data: usageLogs, error } = await supabase
+        .from("usage_logs")
+        .select("id, user_id, thread_id, model, tokens_input, tokens_output, estimated_cost, created_at")
+        .order("created_at", { ascending: false })
+
+      if (error) {
+        console.error("❌ Error fetching usage logs:", error)
+      } else {
+        console.log("✅ Loaded usage logs:", usageLogs)
+        setUsageData(usageLogs || [])
+      }
+
+      setLoading(false)
+    }
+
     fetchUsage()
-  }, [fetchUsage])
+  }, [])
+
 
   useEffect(() => {
     let filtered = [...logs]
@@ -231,21 +256,20 @@ export default function UsagePage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-[#f7f5ef] text-[#555]">
-              <tr>
-                <th className="py-3 px-4 font-medium">User</th>
-                <th className="py-3 px-4 font-medium">Email</th>
-                <th className="py-3 px-4 font-medium">Model</th>
-                <th className="py-3 px-4 font-medium">Input Tokens</th>
-                <th className="py-3 px-4 font-medium">Output Tokens</th>
-                <th className="py-3 px-4 font-medium">Cost ($)</th>
-                <th className="py-3 px-4 font-medium">Date</th>
-              </tr>
+            <tr>
+              <th className="py-3 px-4 font-medium">User</th>
+              <th className="py-3 px-4 font-medium">Email</th>
+              <th className="py-3 px-4 font-medium">Model</th>
+              <th className="py-3 px-4 font-medium">Tokens</th>
+              <th className="py-3 px-4 font-medium">Cost ($)</th>
+              <th className="py-3 px-4 font-medium">Date</th>
+            </tr>
             </thead>
             <tbody>
-              {currentLogs.map((log, i) => (
+            {currentLogs.map((log, i) => (
                 <tr
-                  key={i}
-                  className="border-t border-[#eee] hover:bg-[#faf8f3] transition-colors"
+                    key={i}
+                    className="border-t border-[#eee] hover:bg-[#faf8f3] transition-colors"
                 >
                   <td className="py-3 px-4 font-medium text-[#2d2d2d]">
                     {log.users?.name || "Unknown"}
@@ -254,30 +278,24 @@ export default function UsagePage() {
                     {log.users?.email || "—"}
                   </td>
                   <td className="py-3 px-4">
-                    <span className="inline-flex items-center px-2 py-1 rounded-md bg-[#f5f5f5] text-[12px] font-medium text-[#2d2d2d]">
-                      {log.model || "—"}
-                    </span>
+        <span
+            className="inline-flex items-center px-2 py-1 rounded-md bg-[#f5f5f5] text-[12px] font-medium text-[#2d2d2d]">
+          {log.model || "—"}
+        </span>
                   </td>
-                  <td className="py-3 px-4 text-right">{log.tokens_input?.toLocaleString() || "—"}</td>
-                  <td className="py-3 px-4 text-right">{log.tokens_output?.toLocaleString() || "—"}</td>
+                  <td className="py-3 px-4 text-right">
+                    {(log.tokens_used || log.tokens_input + log.tokens_output || 0).toLocaleString()}
+                  </td>
                   <td className="py-3 px-4 text-right font-mono">
-                    {log.estimated_cost
-                      ? Number(log.estimated_cost).toFixed(6)
-                      : "—"}
+                    {(log.cost || log.estimated_cost)
+                        ? Number(log.cost || log.estimated_cost).toFixed(6)
+                        : "—"}
                   </td>
                   <td className="py-3 px-4 text-gray-500">
                     {new Date(log.created_at).toLocaleString()}
                   </td>
                 </tr>
-              ))}
-
-              {currentLogs.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center text-gray-500">
-                    No logs found.
-                  </td>
-                </tr>
-              )}
+            ))}
             </tbody>
           </table>
         </div>
@@ -285,25 +303,25 @@ export default function UsagePage() {
 
       {/* Pagination */}
       {filteredLogs.length > logsPerPage && (
-        <div className="flex justify-center items-center gap-2 mt-6">
-          <button
-            onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-            disabled={currentPage === 1}
-            className="px-4 py-2 border border-[#e0ddd4] rounded-lg text-sm text-[#555] hover:text-[#2d2d2d] hover:bg-[#f7f5ef] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            Previous
-          </button>
-          <span className="text-sm text-[#555] px-4">
+          <div className="flex justify-center items-center gap-2 mt-6">
+            <button
+                onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                disabled={currentPage === 1}
+                className="px-4 py-2 border border-[#e0ddd4] rounded-lg text-sm text-[#555] hover:text-[#2d2d2d] hover:bg-[#f7f5ef] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Previous
+            </button>
+            <span className="text-sm text-[#555] px-4">
             Page {currentPage} of {totalPages}
           </span>
-          <button
-            onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
-            disabled={currentPage === totalPages}
-            className="px-4 py-2 border border-[#e0ddd4] rounded-lg text-sm text-[#555] hover:text-[#2d2d2d] hover:bg-[#f7f5ef] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            Next
-          </button>
-        </div>
+            <button
+                onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="px-4 py-2 border border-[#e0ddd4] rounded-lg text-sm text-[#555] hover:text-[#2d2d2d] hover:bg-[#f7f5ef] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Next
+            </button>
+          </div>
       )}
     </div>
   )

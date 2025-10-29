@@ -76,11 +76,13 @@ export async function createZepThread(threadId: string, userId: string) {
     console.log('✅ Created Zep thread:', threadId);
     return true;
   } catch (error: any) {
-    if (error.statusCode === 409 || error.status === 409) {
-      console.log('Thread already exists:', threadId);
+    // Thread already exists - that's totally fine!
+    if (error.statusCode === 409 || error.status === 409 ||
+        error.statusCode === 400 || error.status === 400) {
+      console.log('✅ Zep thread already exists:', threadId);
       return true;
     }
-    console.error('Error creating Zep thread:', error);
+    console.error('❌ Error creating Zep thread:', error);
     return false;
   }
 }

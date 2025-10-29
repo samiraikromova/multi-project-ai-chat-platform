@@ -10,7 +10,7 @@ function calculateCost(model: string, inputTokens: number, outputTokens: number)
   }
 
   const rates = pricing[model] || { input: 0.80, output: 4.00 }
-  return ((inputTokens / 1000000) * rates.input) + ((outputTokens / 1000000) * rates.output)
+  return ((inputTokens / 1_000_000) * rates.input) + ((outputTokens / 1_000_000) * rates.output)
 }
 
 function getModelString(modelName: string): string {
@@ -37,10 +37,7 @@ export async function POST(request: Request) {
     } = body
 
     if (!message || !userId || !projectId) {
-      return NextResponse.json({
-        success: false,
-        error: 'Missing required fields'
-      }, { status: 400 })
+      return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 })
     }
 
     const supabase = await createClient()
@@ -60,6 +57,7 @@ export async function POST(request: Request) {
     let threadTitle = 'New Chat'
     let isNewThread = false
 
+    // Create thread if not exists
     if (!currentThreadId) {
       isNewThread = true
       const firstWords = message.split(' ').slice(0, 6).join(' ')
@@ -85,66 +83,45 @@ export async function POST(request: Request) {
       }
 
       currentThreadId = newThread.id
+    }
 
-      // Create thread in Zep
+    // ✅ ALWAYS create Zep thread (moved outside the if block)
+    try {
+      console.log('🧵 Creating Zep thread:', currentThreadId, 'for user:', actualUserId)
       await createZepThread(currentThreadId, actualUserId)
+      console.log('✅ Zep thread created')
+    } catch (error: any) {
+      // Thread might already exist, that's fine
+      if (error.statusCode === 409 || error.status === 409) {
+        console.log('Thread already exists in Zep')
+      } else {
+        console.error('❌ Zep thread creation failed:', error)
+      }
     }
 
     // Get Zep memory
-    console.log('📥 Fetching Zep memory for thread:', currentThreadId)
     const zepMemory = await getZepMemory(currentThreadId)
+    const zepContext = zepMemory?.context || ''
 
-    let zepContext = ''
-    if (zepMemory && zepMemory.context) {
-      zepContext = zepMemory.context
-      console.log(`✅ Retrieved context block (${zepContext.length} chars)`)
-    }
-
-    // Save user message to Supabase
-    const { data: userMessage, error: userMessageError } = await supabase
-      .from('messages')
-      .insert({
-        thread_id: currentThreadId,
-        role: 'user',
-        content: message,
-      })
-      .select()
-      .single()
-
-    if (userMessageError) {
-      console.error('User message error:', userMessageError)
-      return NextResponse.json({
-        success: false,
-        error: 'Failed to save user message'
-      }, { status: 500 })
-    }
+    // Save user message
+    await supabase.from('messages').insert({
+      thread_id: currentThreadId,
+      role: 'user',
+      content: message,
+    })
 
     // Handle file attachments
-    let fileContext = ''
-    if (fileUrls && fileUrls.length > 0) {
-      fileContext = fileUrls.map((f: any) =>
-        `[Attached file: ${f.name}${f.type ? ` (${f.type})` : ''}]`
-      ).join('\n')
-    }
+    const fileContext = fileUrls.length
+      ? fileUrls.map((f: any) => `[Attached file: ${f.name}${f.type ? ` (${f.type})` : ''}]`).join('\n')
+      : ''
 
     // Call N8N webhook
     const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL
-
-    if (!n8nWebhookUrl) {
-      console.error('❌ N8N_WEBHOOK_URL not configured')
-      return NextResponse.json({
-        success: false,
-        error: 'N8N webhook not configured'
-      }, { status: 500 })
-    }
-
-    console.log('📤 Calling N8N webhook')
+    if (!n8nWebhookUrl) throw new Error('N8N webhook not configured')
 
     const n8nResponse = await fetch(n8nWebhookUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message: fileContext ? `${message}\n\n${fileContext}` : message,
         userId: actualUserId,
@@ -152,122 +129,43 @@ export async function POST(request: Request) {
         projectSlug: _projectSlug,
         model: getModelString(model || 'Claude Haiku 4.5'),
         threadId: currentThreadId,
-        zepContext: zepContext,
+        zepContext,
         systemPrompt: systemPrompt || 'You are a helpful AI assistant.',
         fileUrls
       })
     })
 
-    if (!n8nResponse.ok) {
-      const errorText = await n8nResponse.text()
-      console.error('❌ N8N webhook error:', errorText)
-      throw new Error(`N8N webhook failed: ${n8nResponse.status}`)
-    }
+    const n8nData = await n8nResponse.json()
+    let aiReply = n8nData?.[0]?.reply || n8nData?.reply || 'No response'
+    const inputTokens = n8nData?.[0]?.usage?.input_tokens || 0
+    const outputTokens = n8nData?.[0]?.usage?.output_tokens || 0
+    const estimatedCost = calculateCost(getModelString(model || 'Claude Haiku 4.5'), inputTokens, outputTokens)
 
-    let n8nData
-    try {
-      const text = await n8nResponse.text()
-
-      if (!text || text.trim() === '') {
-        throw new Error('Empty response from N8N')
-      }
-
-      n8nData = JSON.parse(text)
-    } catch (parseError) {
-      console.error('❌ Failed to parse N8N response:', parseError)
-      throw new Error('N8N returned invalid response')
-    }
-
-    // Extract response
-    let aiReply = 'No response from N8N'
-
-    if (Array.isArray(n8nData) && n8nData.length > 0) {
-      const responseData = n8nData[0]
-
-      if (typeof responseData.reply === 'string') {
-        aiReply = responseData.reply
-      } else if (Array.isArray(responseData.reply)) {
-        const textBlock = responseData.reply.find((block: any) => block.type === 'text')
-        aiReply = textBlock?.text || 'No text response'
-      } else if (responseData.output) {
-        aiReply = responseData.output
-      }
-    } else if (typeof n8nData.reply === 'string') {
-      aiReply = n8nData.reply
-    }
-
-    // Extract tokens
-    let inputTokens = 0
-    let outputTokens = 0
-
-    if (Array.isArray(n8nData) && n8nData.length > 0) {
-      const responseData = n8nData[0]
-      if (responseData.usage) {
-        inputTokens = responseData.usage.input_tokens || responseData.usage.tokens || 0
-        outputTokens = responseData.usage.output_tokens || responseData.usage.tokens || 0
-      }
-    }
-
-    const estimatedCost = calculateCost(
-      getModelString(model || 'Claude Haiku 4.5'),
-      inputTokens,
-      outputTokens
-    )
-
-    console.log('📊 Token usage:', {
+    // ✅ Save AI reply to Supabase
+    await supabase.from('messages').insert({
+      thread_id: currentThreadId,
+      role: 'assistant',
+      content: aiReply,
       model: model || 'Claude Haiku 4.5',
-      inputTokens,
-      outputTokens,
-      cost: estimatedCost
+      tokens_used: inputTokens + outputTokens,
     })
 
-    // Save to Zep memory
-    console.log('💾 Saving to Zep memory...')
+    // ✅ Save to Zep memory
     const userName = user?.user_metadata?.full_name || user?.user_metadata?.name || 'User'
-    await addZepMemory(
-      currentThreadId,
-      message,
-      aiReply,
-      userName
-    )
-    console.log('✅ Saved to Zep memory')
+    await addZepMemory(currentThreadId, message, aiReply, userName)
 
-    // Save assistant message to Supabase
-    const { data: assistantMessage, error: assistantMessageError } = await supabase
-      .from('messages')
-      .insert({
-        thread_id: currentThreadId,
-        role: 'assistant',
-        content: aiReply,
-        model: model || 'Claude Haiku 4.5',
-        tokens_used: inputTokens + outputTokens,
-      })
-      .select()
-      .single()
+    // ✅ Store usage in Supabase (for admin/usage page)
+    await supabase.from('usage_logs').insert({
+      user_id: actualUserId,
+      thread_id: currentThreadId,
+      model: model || 'Claude Haiku 4.5',
+      tokens_input: inputTokens,
+      tokens_output: outputTokens,
+      estimated_cost: estimatedCost,
+      created_at: new Date().toISOString()
+    })
 
-    if (assistantMessageError) {
-      console.error('Assistant message error:', assistantMessageError)
-    }
-
-    // Log usage
-    const { error: usageError } = await supabase
-      .from('usage_logs')
-      .insert({
-        user_id: actualUserId,
-        thread_id: currentThreadId,
-        model: model || 'Claude Haiku 4.5',
-        tokens_input: parseInt(String(inputTokens)) || 0,
-        tokens_output: parseInt(String(outputTokens)) || 0,
-        estimated_cost: parseFloat(String(estimatedCost)) || 0,
-      })
-
-    if (usageError) {
-      console.error('❌ Usage logging error:', usageError)
-    }
-
-    // Update thread timestamp
-    await supabase
-      .from('chat_threads')
+    await supabase.from('chat_threads')
       .update({ updated_at: new Date().toISOString() })
       .eq('id', currentThreadId)
 
@@ -275,20 +173,11 @@ export async function POST(request: Request) {
       success: true,
       reply: aiReply,
       threadId: currentThreadId,
-      userMessageId: userMessage.id,
-      assistantMessageId: assistantMessage?.id,
-      usage: {
-        inputTokens,
-        outputTokens,
-        estimatedCost: estimatedCost.toFixed(6)
-      }
+      usage: { inputTokens, outputTokens, estimatedCost }
     })
 
   } catch (error: any) {
     console.error('Chat API error:', error)
-    return NextResponse.json({
-      success: false,
-      error: error.message || 'Internal server error'
-    }, { status: 500 })
+    return NextResponse.json({ success: false, error: error.message || 'Internal error' }, { status: 500 })
   }
 }
