@@ -73,7 +73,7 @@ export default function ProjectChatWrapper({
       projectSlug={projectSlug}
       projectEmoji={projectEmoji}
       systemPrompt={systemPrompt}
-      projectColor={projectColor}
+      _projectColor={projectColor}
     />
   )
 }
