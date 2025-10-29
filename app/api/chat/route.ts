@@ -1,37 +1,25 @@
 import { NextResponse } from "next/server"
 import { createClient } from '@/lib/supabase/server'
+import { getZepMemory, addZepMemory, ensureZepUser, createZepThread } from '@/lib/zep/client'
 
-// Calculate token cost based on model
 function calculateCost(model: string, inputTokens: number, outputTokens: number): number {
   const pricing: Record<string, { input: number; output: number }> = {
-    'claude-sonnet-4.5-20250514': { input: 0.003, output: 0.015 },
-    'claude-sonnet-4-20250514': { input: 0.003, output: 0.015 },
-    'gpt-5': { input: 0.005, output: 0.015 },
-    'gpt-4o': { input: 0.0025, output: 0.01 },
-    'gemini-pro': { input: 0.00125, output: 0.00375 },
-    'deepseek-r1': { input: 0.00014, output: 0.00028 },
-    'deepseek-chat': { input: 0.0001, output: 0.0002 },
-    'grok-4': { input: 0.00002, output: 0.00002 },
-    'grok-beta': { input: 0.00001, output: 0.00001 },
+    'claude-haiku-4.5-20251001': { input: 0.80, output: 4.00 },
+    'claude-sonnet-4.5-20250929': { input: 3.00, output: 15.00 },
+    'claude-opus-4.1-20250805': { input: 15.00, output: 75.00 },
   }
 
-  const rates = pricing[model] || { input: 0.003, output: 0.015 }
-  return ((inputTokens / 1000) * rates.input) + ((outputTokens / 1000) * rates.output)
+  const rates = pricing[model] || { input: 0.80, output: 4.00 }
+  return ((inputTokens / 1000000) * rates.input) + ((outputTokens / 1000000) * rates.output)
 }
 
 function getModelString(modelName: string): string {
   const modelMap: Record<string, string> = {
-    'Claude Sonnet 4.5': 'claude-sonnet-4.5-20250514',
-    'Claude Sonnet 4': 'claude-sonnet-4-20250514',
-    'GPT-5': 'gpt-5',
-    'GPT-4o': 'gpt-4o',
-    'Gemini Pro': 'gemini-pro',
-    'DeepSeek R1': 'deepseek-r1',
-    'Deepseek': 'deepseek-chat',
-    'Grok 4': 'grok-4',
-    'xAI': 'grok-beta',
+    'Claude Haiku 4.5': 'claude-haiku-4.5-20251001',
+    'Claude Sonnet 4.5': 'claude-sonnet-4.5-20250929',
+    'Claude Opus 4.1': 'claude-opus-4.1-20250805',
   }
-  return modelMap[modelName] || 'claude-sonnet-4.5-20250514'
+  return modelMap[modelName] || 'claude-haiku-4.5-20251001'
 }
 
 export async function POST(request: Request) {
@@ -59,11 +47,21 @@ export async function POST(request: Request) {
     const { data: { user } } = await supabase.auth.getUser()
     const actualUserId = user?.id || userId
 
-    // Get or create thread
+    // Ensure user exists in Zep
+    const userMetadata = user?.user_metadata || {}
+    await ensureZepUser(
+      actualUserId,
+      user?.email || undefined,
+      userMetadata.full_name?.split(' ')[0] || userMetadata.first_name || undefined,
+      userMetadata.full_name?.split(' ')[1] || userMetadata.last_name || undefined
+    )
+
     let currentThreadId = threadId
     let threadTitle = 'New Chat'
+    let isNewThread = false
 
     if (!currentThreadId) {
+      isNewThread = true
       const firstWords = message.split(' ').slice(0, 6).join(' ')
       threadTitle = firstWords.length > 50 ? firstWords.substring(0, 50) + '...' : firstWords
 
@@ -73,7 +71,7 @@ export async function POST(request: Request) {
           user_id: actualUserId,
           project_id: projectId,
           title: threadTitle,
-          model: model || 'Claude Sonnet 4.5',
+          model: model || 'Claude Haiku 4.5',
         })
         .select()
         .single()
@@ -87,9 +85,22 @@ export async function POST(request: Request) {
       }
 
       currentThreadId = newThread.id
+
+      // Create thread in Zep
+      await createZepThread(currentThreadId, actualUserId)
     }
 
-    // Save user message
+    // Get Zep memory
+    console.log('📥 Fetching Zep memory for thread:', currentThreadId)
+    const zepMemory = await getZepMemory(currentThreadId)
+
+    let zepContext = ''
+    if (zepMemory && zepMemory.context) {
+      zepContext = zepMemory.context
+      console.log(`✅ Retrieved context block (${zepContext.length} chars)`)
+    }
+
+    // Save user message to Supabase
     const { data: userMessage, error: userMessageError } = await supabase
       .from('messages')
       .insert({
@@ -108,35 +119,12 @@ export async function POST(request: Request) {
       }, { status: 500 })
     }
 
-    // Get conversation history
-    const { data: history } = await supabase
-      .from('messages')
-      .select('role, content')
-      .eq('thread_id', currentThreadId)
-      .order('created_at', { ascending: true })
-      .limit(20)
-
-    const conversationMessages: any[] = []
-    if (history) {
-      history.forEach(msg => {
-        if (msg.role === 'user' || msg.role === 'assistant') {
-          conversationMessages.push({
-            role: msg.role,
-            content: msg.content
-          })
-        }
-      })
-    }
-
     // Handle file attachments
+    let fileContext = ''
     if (fileUrls && fileUrls.length > 0) {
-      const lastMessage = conversationMessages[conversationMessages.length - 1]
-      if (lastMessage && lastMessage.role === 'user') {
-        const fileContext = fileUrls.map((f: any) =>
-          `[Attached file: ${f.name}${f.type ? ` (${f.type})` : ''}]`
-        ).join('\n')
-        lastMessage.content = `${lastMessage.content}\n\n${fileContext}`
-      }
+      fileContext = fileUrls.map((f: any) =>
+        `[Attached file: ${f.name}${f.type ? ` (${f.type})` : ''}]`
+      ).join('\n')
     }
 
     // Call N8N webhook
@@ -150,7 +138,7 @@ export async function POST(request: Request) {
       }, { status: 500 })
     }
 
-    console.log('📤 Calling N8N webhook:', n8nWebhookUrl)
+    console.log('📤 Calling N8N webhook')
 
     const n8nResponse = await fetch(n8nWebhookUrl, {
       method: 'POST',
@@ -158,13 +146,13 @@ export async function POST(request: Request) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        message,
+        message: fileContext ? `${message}\n\n${fileContext}` : message,
         userId: actualUserId,
         projectId,
         projectSlug: _projectSlug,
-        model: getModelString(model || 'Claude Sonnet 4.5'),
+        model: getModelString(model || 'Claude Haiku 4.5'),
         threadId: currentThreadId,
-        conversationHistory: conversationMessages,
+        zepContext: zepContext,
         systemPrompt: systemPrompt || 'You are a helpful AI assistant.',
         fileUrls
       })
@@ -176,14 +164,24 @@ export async function POST(request: Request) {
       throw new Error(`N8N webhook failed: ${n8nResponse.status}`)
     }
 
-    const n8nData = await n8nResponse.json()
-    console.log('✅ N8N response received:', n8nData)
+    let n8nData
+    try {
+      const text = await n8nResponse.text()
 
-    // Extract response from N8N - handle nested array format
+      if (!text || text.trim() === '') {
+        throw new Error('Empty response from N8N')
+      }
+
+      n8nData = JSON.parse(text)
+    } catch (parseError) {
+      console.error('❌ Failed to parse N8N response:', parseError)
+      throw new Error('N8N returned invalid response')
+    }
+
+    // Extract response
     let aiReply = 'No response from N8N'
 
     if (Array.isArray(n8nData) && n8nData.length > 0) {
-      // N8N returns array with single object
       const responseData = n8nData[0]
 
       if (typeof responseData.reply === 'string') {
@@ -194,57 +192,55 @@ export async function POST(request: Request) {
       } else if (responseData.output) {
         aiReply = responseData.output
       }
-
-      const inputTokens = responseData.usage?.tokens || 0
-      const outputTokens = responseData.usage?.tokens || 0
-      const estimatedCost = responseData.usage?.cost || calculateCost(
-        getModelString(model || 'Claude Sonnet 4.5'),
-        inputTokens,
-        outputTokens
-      )
     } else if (typeof n8nData.reply === 'string') {
       aiReply = n8nData.reply
     }
 
-    // Extract tokens and cost from N8N response
+    // Extract tokens
     let inputTokens = 0
     let outputTokens = 0
-    let estimatedCost = 0
 
     if (Array.isArray(n8nData) && n8nData.length > 0) {
       const responseData = n8nData[0]
-
-      // Get usage data from N8N
       if (responseData.usage) {
         inputTokens = responseData.usage.input_tokens || responseData.usage.tokens || 0
         outputTokens = responseData.usage.output_tokens || responseData.usage.tokens || 0
-        estimatedCost = responseData.usage.cost || 0
       }
     }
 
-    // Fallback calculation if N8N doesn't provide usage
-    if (estimatedCost === 0 && (inputTokens > 0 || outputTokens > 0)) {
-      estimatedCost = calculateCost(
-        getModelString(model || 'Claude Sonnet 4.5'),
-        inputTokens,
-        outputTokens
-      )
-    }
+    const estimatedCost = calculateCost(
+      getModelString(model || 'Claude Haiku 4.5'),
+      inputTokens,
+      outputTokens
+    )
 
     console.log('📊 Token usage:', {
-      model: model || 'Claude Sonnet 4.5',
+      model: model || 'Claude Haiku 4.5',
       inputTokens,
       outputTokens,
       cost: estimatedCost
     })
 
-    // Save assistant message
+    // Save to Zep memory
+    console.log('💾 Saving to Zep memory...')
+    const userName = user?.user_metadata?.full_name || user?.user_metadata?.name || 'User'
+    await addZepMemory(
+      currentThreadId,
+      message,
+      aiReply,
+      userName
+    )
+    console.log('✅ Saved to Zep memory')
+
+    // Save assistant message to Supabase
     const { data: assistantMessage, error: assistantMessageError } = await supabase
       .from('messages')
       .insert({
         thread_id: currentThreadId,
         role: 'assistant',
         content: aiReply,
+        model: model || 'Claude Haiku 4.5',
+        tokens_used: inputTokens + outputTokens,
       })
       .select()
       .single()
@@ -253,13 +249,13 @@ export async function POST(request: Request) {
       console.error('Assistant message error:', assistantMessageError)
     }
 
-    // Log usage with proper data types
+    // Log usage
     const { error: usageError } = await supabase
       .from('usage_logs')
       .insert({
         user_id: actualUserId,
         thread_id: currentThreadId,
-        model: model || 'Claude Sonnet 4.5',
+        model: model || 'Claude Haiku 4.5',
         tokens_input: parseInt(String(inputTokens)) || 0,
         tokens_output: parseInt(String(outputTokens)) || 0,
         estimated_cost: parseFloat(String(estimatedCost)) || 0,
@@ -267,13 +263,6 @@ export async function POST(request: Request) {
 
     if (usageError) {
       console.error('❌ Usage logging error:', usageError)
-    } else {
-      console.log('✅ Usage logged successfully:', {
-        user_id: actualUserId,
-        tokens_input: inputTokens,
-        tokens_output: outputTokens,
-        cost: estimatedCost
-      })
     }
 
     // Update thread timestamp
@@ -303,6 +292,3 @@ export async function POST(request: Request) {
     }, { status: 500 })
   }
 }
-
-
-

@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
+    "@getzep/zep-cloud": "^3.8.0",
     "@google/generative-ai": "^0.21.0",
     "@pinecone-database/pinecone": "^3.0.3",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
@@ -32,6 +33,7 @@
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.2",
+    "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "autoprefixer": "^10",

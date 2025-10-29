@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
-import ReactMarkdown from 'react-markdown'
 
 interface Message {
   id: string
@@ -25,12 +24,6 @@ interface AttachedFile {
   type: string
   url: string
   file: File
-}
-
-interface Project {
-  id: string
-  slug: string
-  icon: string
 }
 
 interface CB4ChatProps {
@@ -74,7 +67,6 @@ export default function CB4Chat({
   const [isDragging, setIsDragging] = useState(false)
   const [userName, setUserName] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
-  const [_allProjects, _setAllProjects] = useState<Project[]>([])
   const [contextWarning, setContextWarning] = useState(false)
 
   const supabase = createClient()
@@ -85,12 +77,10 @@ export default function CB4Chat({
   const fileMenuRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Save sidebar state
   useEffect(() => {
     localStorage.setItem('sidebarOpen', JSON.stringify(sidebarOpen))
   }, [sidebarOpen])
 
-  // Click outside handlers
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) setModelDropdownOpen(false)
@@ -169,7 +159,6 @@ export default function CB4Chat({
     })
   }
 
-  // Load threads for THIS specific project
   const loadThreads = useCallback(async () => {
     const { data } = await supabase
       .from('chat_threads')
@@ -181,7 +170,6 @@ export default function CB4Chat({
     if (data) setThreads(data)
   }, [supabase, userId, projectId])
 
-  // Load messages for current thread
   const loadMessages = useCallback(async () => {
     if (!currentThreadId) return
     const { data } = await supabase
@@ -199,14 +187,13 @@ export default function CB4Chat({
   useEffect(() => { loadThreads() }, [loadThreads])
   useEffect(() => { loadMessages() }, [loadMessages])
 
-  // Check context size and show warning
+  // Check context size
   useEffect(() => {
     const totalMessages = messages.length
     const estimatedTokens = messages.reduce((sum, msg) =>
       sum + Math.ceil(msg.content.length / 4), 0
     )
 
-    // Show warning if context exceeds 20k tokens or 50 messages
     if (estimatedTokens > 20000 || totalMessages > 50) {
       setContextWarning(true)
     } else {
@@ -339,13 +326,11 @@ export default function CB4Chat({
     router.push('/auth/login')
   }
 
-  const models = [
-    { name: 'Claude Sonnet 4.5', provider: 'Anthropic' },
-    { name: 'GPT-5', provider: 'OpenAI' },
-    { name: 'Gemini Pro', provider: 'Google' },
-    { name: 'DeepSeek R1', provider: 'DeepSeek' },
-    { name: 'Grok 4', provider: 'xAI' },
-  ]
+    const models = [
+    { name: 'Claude Sonnet 4.5', value: 'Claude Sonnet 4.5', tier: 'Most Capable' },
+    { name: 'Claude Haiku 4.5', value: 'Claude Haiku 4.5', tier: 'Fast & Efficient' },
+    { name: 'Claude Opus 4.1', value: 'Claude Opus 4.1', tier: 'Advanced Reasoning' },
+  ];
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B'
@@ -374,65 +359,50 @@ export default function CB4Chat({
       {/* Sidebar */}
       <aside className={`${sidebarOpen ? 'w-[260px]' : 'w-[60px]'} bg-[#f7f5ef] border-r border-[#e0ddd4] flex flex-col transition-all duration-300 flex-shrink-0`}>
         {!sidebarOpen && (
-            <div className="flex flex-col h-full items-center py-3 gap-2">
-              <button onClick={() => setSidebarOpen(true)}
-                      className="w-10 h-10 rounded-lg hover:bg-[#e8e6df] transition-colors flex items-center justify-center text-[#6b6b6b]"
-                      title="Open sidebar">
+          <div className="flex flex-col h-full items-center py-3 gap-2">
+            <button onClick={() => setSidebarOpen(true)} className="w-10 h-10 rounded-lg hover:bg-[#e8e6df] transition-colors flex items-center justify-center text-[#6b6b6b]" title="Open sidebar">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
+                <line x1="8" y1="4" x2="8" y2="16" stroke="currentColor" strokeWidth="1.5"/>
+              </svg>
+            </button>
+
+            <button onClick={() => router.push('/dashboard')} className="w-10 h-10 rounded-lg hover:bg-[#e8e6df] transition-colors flex items-center justify-center text-[#6b6b6b]" title="Dashboard">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <rect x="3" y="3" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/>
+                <rect x="11" y="3" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/>
+                <rect x="3" y="11" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/>
+                <rect x="11" y="11" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/>
+              </svg>
+            </button>
+
+            <button onClick={createNewThread} className="w-10 h-10 rounded-full bg-[#d97757] hover:bg-[#c86545] transition-colors flex items-center justify-center text-white" title="New chat">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M10 5v10M5 10h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+            </button>
+
+            {threads.length > 0 && (
+              <button onClick={() => setSidebarOpen(true)} className="w-10 h-10 rounded-lg hover:bg-[#e8e6df] transition-colors flex items-center justify-center text-[#6b6b6b]" title="View chats">
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
-                  <line x1="8" y1="4" x2="8" y2="16" stroke="currentColor" strokeWidth="1.5"/>
+                  <path d="M3 7h14M3 10h14M3 13h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                 </svg>
               </button>
+            )}
 
-              <button
-                  onClick={() => router.push('/dashboard')}
-                  className="w-10 h-10 rounded-lg hover:bg-[#e8e6df] transition-colors flex items-center justify-center text-[#6b6b6b]"
-                  title="Dashboard"
-              >
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <rect x="3" y="3" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/>
-                  <rect x="11" y="3" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/>
-                  <rect x="3" y="11" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/>
-                  <rect x="11" y="11" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/>
-                </svg>
+            <div className="flex-1"></div>
+
+            <div className="relative" ref={userDropdownRef}>
+              <button onClick={() => setUserDropdownOpen(!userDropdownOpen)} className="w-10 h-10 rounded-full flex items-center justify-center text-white text-[13px] font-medium hover:opacity-80 transition-opacity" style={{ backgroundColor: '#d97757' }}>
+                {userName ? userName.charAt(0).toUpperCase() : (userEmail?.charAt(0).toUpperCase() || 'U')}
               </button>
-
-              <button onClick={createNewThread}
-                      className="w-10 h-10 rounded-full bg-[#d97757] hover:bg-[#c86545] transition-colors flex items-center justify-center text-white"
-                      title="New chat">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <path d="M10 5v10M5 10h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-              </button>
-
-              {threads.length > 0 && (
-                  <button onClick={() => setSidebarOpen(true)}
-                          className="w-10 h-10 rounded-lg hover:bg-[#e8e6df] transition-colors flex items-center justify-center text-[#6b6b6b]"
-                          title="View chats">
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                      <path d="M3 7h14M3 10h14M3 13h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                    </svg>
-                  </button>
+              {userDropdownOpen && (
+                <div className="absolute bottom-full left-12 mb-2 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 w-48 z-50">
+                  <button onClick={handleLogout} className="w-full px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors">Logout</button>
+                </div>
               )}
-
-              <div className="flex-1"></div>
-
-              <div className="relative" ref={userDropdownRef}>
-                <button onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                        className="w-10 h-10 rounded-full flex items-center justify-center text-white text-[13px] font-medium hover:opacity-80 transition-opacity"
-                        style={{backgroundColor: '#d97757'}}>
-                  {userName ? userName.charAt(0).toUpperCase() : (userEmail?.charAt(0).toUpperCase() || 'U')}
-                </button>
-                {userDropdownOpen && (
-                    <div
-                        className="absolute bottom-full left-12 mb-2 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 w-48 z-50">
-                      <button onClick={handleLogout}
-                              className="w-full px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors">Logout
-                      </button>
-                    </div>
-                )}
-              </div>
             </div>
+          </div>
         )}
 
         {sidebarOpen && (
@@ -442,16 +412,21 @@ export default function CB4Chat({
                 <span className="text-xl">{projectEmoji}</span>
                 <h2 className="text-[15px] font-semibold text-[#2d2d2d]">{projectName}</h2>
               </div>
-              <button onClick={() => setSidebarOpen(false)} className="p-1.5 hover:bg-[#e8e6df] rounded-lg transition-colors" title="Close sidebar">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
-                  <line x1="8" y1="4" x2="8" y2="16" stroke="currentColor" strokeWidth="1.5"/>
+              <button
+                  onClick={() => setSidebarOpen(false)}
+                  className="p-1.5 hover:bg-[#e8e6df] rounded-lg transition-colors"
+                  title="Close sidebar"
+              >
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
+                  <rect x="3" y="4" width="14" height="12" rx="1.5" strokeWidth="1.5"/>
+                  <line x1="12" y1="4" x2="12" y2="16" strokeWidth="1.5"/>
                 </svg>
               </button>
             </div>
 
             <div className="p-3 space-y-2">
-              <button onClick={() => router.push('/dashboard')} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors text-[13px] text-[#6b6b6b]">
+              <button onClick={() => router.push('/dashboard')}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors text-[13px] text-[#6b6b6b]">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                   <path d="M14 8H2M6 4l-4 4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
@@ -530,12 +505,11 @@ export default function CB4Chat({
           <h2 className="text-[15px] font-medium text-[#2d2d2d]">{currentThreadTitle}</h2>
         </header>
 
-        {/* Context Warning */}
         {contextWarning && (
           <div className="bg-[#fff3cd] border-b border-[#ffc107] px-6 py-3">
             <div className="max-w-[800px] mx-auto flex items-center gap-3">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="#856404">
-                <path d="M10 2L2 18h16L10 2zm0 3l6 11H4l6-11zm0 3v4h1V8h-1zm0 5v1h1v-1h-1z"/>
+                <path d="M10 2L2 18h16L10 2 zm0 3l6 11H4l6-11zm0 3v4h1V8h-1zm0 5v1h1v-1h-1z"/>
               </svg>
               <p className="text-[14px] text-[#856404]">
                 <strong>Warning:</strong> Longer chats will use credits faster due to increased context
@@ -555,21 +529,12 @@ export default function CB4Chat({
             ) : (
               <div className="space-y-6">
                 {messages.map(msg => (
-                <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'text-white bg-[#d97757]' : 'bg-white border border-[#e0ddd4] text-[#2d2d2d]'}`}>
-                    <div
-                      className="text-[15px] leading-[1.6]"
-                      dangerouslySetInnerHTML={{
-                        __html: String(msg.content || '')
-                          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                          .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                          .replace(/`(.*?)`/g, '<code class="bg-[#f5f5f5] px-1 py-0.5 rounded text-[14px]">$1</code>')
-                          .replace(/\n/g, '<br>')
-                      }}
-                    />
+                  <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'text-white bg-[#d97757]' : 'bg-white border border-[#e0ddd4] text-[#2d2d2d]'}`}>
+                      <p className="text-[15px] leading-[1.6] whitespace-pre-wrap">{msg.content}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
                 {loading && (
                   <div className="flex justify-start">
                     <div className="bg-white border border-[#e0ddd4] rounded-2xl px-4 py-3">
@@ -628,7 +593,15 @@ export default function CB4Chat({
                 )}
               </div>
 
-              <input value={message} onChange={(e) => setMessage(e.target.value)} onKeyPress={handleKeyPress} disabled={loading} className="flex-1 outline-none text-[15px] text-[#2d2d2d] bg-transparent placeholder:text-[#999]" placeholder={`Message ${projectName}...`} />
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={handleKeyPress}
+                disabled={loading}
+                rows={1}
+                className="flex-1 outline-none text-[15px] text-[#2d2d2d] bg-transparent placeholder:text-[#999] resize-none max-h-[200px] overflow-y-auto"
+                placeholder={`Message ${projectName}...`}
+              />
 
               <div className="relative" ref={modelDropdownRef}>
                 <button onClick={() => setModelDropdownOpen(!modelDropdownOpen)} className="flex items-center gap-1 text-[13px] text-[#6b6b6b] hover:bg-[#f5f5f5] px-3 py-1.5 rounded transition-colors">
@@ -641,7 +614,10 @@ export default function CB4Chat({
                   <div className="absolute right-0 bottom-full mb-2 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-2 w-48 z-50">
                     {models.map(model => (
                       <button key={model.name} onClick={() => { setSelectedModel(model.name); setModelDropdownOpen(false); }} className="w-full px-4 py-2 text-left hover:bg-[#f5f5f5] transition-colors flex items-center justify-between">
-                        <div className="text-[14px] text-[#2d2d2d] font-medium">{model.name}</div>
+                        <div className="flex-1">
+                          <div className="text-[14px] text-[#2d2d2d] font-medium">{model.name}</div>
+                          <div className="text-[11px] text-[#8b8b8b]">{model.tier}</div>
+                        </div>
                         {selectedModel === model.name && (
                           <svg width="16" height="16" viewBox="0 0 16 16" fill="#d97757">
                             <path d="M13 4L6 11 3 8l1-1 2 2 6-6 1 1z"/>
