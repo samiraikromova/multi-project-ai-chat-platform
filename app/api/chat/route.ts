@@ -136,7 +136,7 @@ export async function POST(request: Request) {
     })
 
     const n8nData = await n8nResponse.json()
-    let aiReply = n8nData?.[0]?.reply || n8nData?.reply || 'No response'
+    const aiReply = n8nData?.[0]?.reply || n8nData?.reply || 'No response'
     const inputTokens = n8nData?.[0]?.usage?.input_tokens || 0
     const outputTokens = n8nData?.[0]?.usage?.output_tokens || 0
     const estimatedCost = calculateCost(getModelString(model || 'Claude Haiku 4.5'), inputTokens, outputTokens)
