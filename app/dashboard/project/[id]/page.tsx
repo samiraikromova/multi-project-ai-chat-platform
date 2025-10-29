@@ -103,7 +103,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
         projectName={projectData.name}
         projectEmoji={projectData.icon}
         systemPrompt={projectData.system_prompt}
-        projectColor={projectData.color}
+        _projectColor={projectData.color}
       />
     </div>
   )
