@@ -55,11 +55,9 @@ export async function POST(request: Request) {
 
     let currentThreadId = threadId
     let threadTitle = 'New Chat'
-    let isNewThread = false
 
     // Create thread if not exists
     if (!currentThreadId) {
-      isNewThread = true
       const firstWords = message.split(' ').slice(0, 6).join(' ')
       threadTitle = firstWords.length > 50 ? firstWords.substring(0, 50) + '...' : firstWords
 
@@ -85,23 +83,36 @@ export async function POST(request: Request) {
       currentThreadId = newThread.id
     }
 
-    // ✅ ALWAYS create Zep thread (moved outside the if block)
+    // Always ensure Zep thread exists
     try {
       console.log('🧵 Creating Zep thread:', currentThreadId, 'for user:', actualUserId)
       await createZepThread(currentThreadId, actualUserId)
       console.log('✅ Zep thread created')
     } catch (error: any) {
-      // Thread might already exist, that's fine
-      if (error.statusCode === 409 || error.status === 409) {
-        console.log('Thread already exists in Zep')
+      if (error.statusCode === 409 || error.status === 409 ||
+          error.statusCode === 400 || error.status === 400) {
+        console.log('✅ Zep thread already exists:', currentThreadId)
       } else {
         console.error('❌ Zep thread creation failed:', error)
       }
     }
 
-    // Get Zep memory
+    // Fetch Zep memory context
+    console.log('📥 Fetching Zep memory for thread:', currentThreadId)
     const zepMemory = await getZepMemory(currentThreadId)
-    const zepContext = zepMemory?.context || ''
+
+    let zepContext = ''
+    if (zepMemory) {
+      console.log('🔍 Zep memory structure:', JSON.stringify(zepMemory, null, 2))
+
+      // Extract context from Zep response
+      if (zepMemory.context) {
+        zepContext = zepMemory.context
+        console.log(`✅ Retrieved context (${zepContext.length} chars)`)
+      } else {
+        console.log('⚠️ Available properties:', Object.keys(zepMemory))
+      }
+    }
 
     // Save user message
     await supabase.from('messages').insert({
@@ -141,7 +152,7 @@ export async function POST(request: Request) {
     const outputTokens = n8nData?.[0]?.usage?.output_tokens || 0
     const estimatedCost = calculateCost(getModelString(model || 'Claude Haiku 4.5'), inputTokens, outputTokens)
 
-    // ✅ Save AI reply to Supabase
+    // Save AI reply to Supabase
     await supabase.from('messages').insert({
       thread_id: currentThreadId,
       role: 'assistant',
@@ -150,11 +161,18 @@ export async function POST(request: Request) {
       tokens_used: inputTokens + outputTokens,
     })
 
-    // ✅ Save to Zep memory
+    // Save to Zep memory
+    console.log('💾 Saving to Zep memory...')
     const userName = user?.user_metadata?.full_name || user?.user_metadata?.name || 'User'
-    await addZepMemory(currentThreadId, message, aiReply, userName)
+    const savedToZep = await addZepMemory(currentThreadId, message, aiReply, userName)
 
-    // ✅ Store usage in Supabase (for admin/usage page)
+    if (savedToZep) {
+      console.log('✅ Saved to Zep memory')
+    } else {
+      console.log('⚠️ Failed to save to Zep memory')
+    }
+
+    // Store usage in Supabase
     await supabase.from('usage_logs').insert({
       user_id: actualUserId,
       thread_id: currentThreadId,
@@ -165,6 +183,7 @@ export async function POST(request: Request) {
       created_at: new Date().toISOString()
     })
 
+    // Update thread timestamp
     await supabase.from('chat_threads')
       .update({ updated_at: new Date().toISOString() })
       .eq('id', currentThreadId)

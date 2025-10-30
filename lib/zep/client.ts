@@ -114,29 +114,44 @@ export async function addZepMemory(
   try {
     const client = getZepClient();
 
+    // Truncate messages if too long (leave room for metadata)
+    const MAX_USER_LENGTH = 7000;
+    const MAX_ASSISTANT_LENGTH = 6000;
+
+    const truncatedUserMessage = userMessage.length > MAX_USER_LENGTH
+      ? userMessage.substring(0, MAX_USER_LENGTH) + '\n[...truncated]'
+      : userMessage;
+
+    const truncatedAssistantMessage = assistantMessage.length > MAX_ASSISTANT_LENGTH
+      ? assistantMessage.substring(0, MAX_ASSISTANT_LENGTH) + '\n[...truncated]'
+      : assistantMessage;
+
+    if (userMessage.length > MAX_USER_LENGTH || assistantMessage.length > MAX_ASSISTANT_LENGTH) {
+      console.log(`⚠️ Truncated messages: User ${userMessage.length}→${truncatedUserMessage.length}, Assistant ${assistantMessage.length}→${truncatedAssistantMessage.length}`);
+    }
+
     const messages: Message[] = [
       {
         role: "user",
-        content: userMessage,
+        content: truncatedUserMessage,
         name: userName || "User",
       },
       {
         role: "assistant",
-        content: assistantMessage,
+        content: truncatedAssistantMessage,
         name: "Assistant",
       },
     ];
 
-    // Fix: addMessages takes threadId as first param, object with messages as second
     await client.thread.addMessages(threadId, { messages });
 
+    console.log('✅ Saved to Zep memory');
     return true;
   } catch (error: any) {
     console.error('Error adding to Zep memory:', error);
     return false;
   }
 }
-
 export async function searchZepMemory(
   userId: string,
   query: string,
