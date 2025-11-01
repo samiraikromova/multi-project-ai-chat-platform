@@ -114,7 +114,7 @@ export async function addZepMemory(
   try {
     const client = getZepClient();
 
-    // Truncate messages if too long (leave room for metadata)
+    // Truncate messages if too long (Zep limit: 14,000 chars)
     const MAX_USER_LENGTH = 7000;
     const MAX_ASSISTANT_LENGTH = 6000;
 
@@ -127,7 +127,7 @@ export async function addZepMemory(
       : assistantMessage;
 
     if (userMessage.length > MAX_USER_LENGTH || assistantMessage.length > MAX_ASSISTANT_LENGTH) {
-      console.log(`⚠️ Truncated messages: User ${userMessage.length}→${truncatedUserMessage.length}, Assistant ${assistantMessage.length}→${truncatedAssistantMessage.length}`);
+      console.log(`⚠️ Truncated: User ${userMessage.length}→${truncatedUserMessage.length}, Assistant ${assistantMessage.length}→${truncatedAssistantMessage.length}`);
     }
 
     const messages: Message[] = [
@@ -144,14 +144,13 @@ export async function addZepMemory(
     ];
 
     await client.thread.addMessages(threadId, { messages });
-
-    console.log('✅ Saved to Zep memory');
     return true;
   } catch (error: any) {
     console.error('Error adding to Zep memory:', error);
     return false;
   }
 }
+
 export async function searchZepMemory(
   userId: string,
   query: string,
