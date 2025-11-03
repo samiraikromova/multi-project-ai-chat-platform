@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
+import CreditBalance from "@/components/CreditBalance"
+
 
 interface Message {
   id: string
@@ -68,6 +70,8 @@ export default function CB4Chat({
   const [userName, setUserName] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [contextWarning, setContextWarning] = useState(false)
+  const [renameThreadId, setRenameThreadId] = useState<string | null>(null)
+  const [newThreadName, setNewThreadName] = useState("")
 
   const supabase = createClient()
   const router = useRouter()
@@ -92,6 +96,24 @@ export default function CB4Chat({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+
+  const renameThread = async () => {
+  if (!renameThreadId || !newThreadName.trim()) return
+
+  const { error } = await supabase
+    .from('chat_threads')
+    .update({ title: newThreadName.trim() })
+    .eq('id', renameThreadId)
+
+  if (error) {
+    console.error('Rename error:', error)
+    alert('Failed to rename')
+  } else {
+    setRenameThreadId(null)
+    setNewThreadName("")
+    loadThreads()
+  }
+}
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -452,17 +474,27 @@ export default function CB4Chat({
                   </button>
                   {currentThreadId === thread.id && (
                     <div className="absolute right-2 top-2">
-                      <button onClick={() => setDeleteMenuOpen(deleteMenuOpen === thread.id ? null : thread.id)} className="p-1 hover:bg-[#f7f5ef] rounded transition-colors">
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                          <circle cx="7" cy="3" r="1"/>
-                          <circle cx="7" cy="7" r="1"/>
-                          <circle cx="7" cy="11" r="1"/>
-                        </svg>
+                      <button onClick={() => setDeleteMenuOpen(deleteMenuOpen === thread.id ? null : thread.id)}
+                              className="p-1 hover:bg-[#f7f5ef] rounded transition-colors">
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                              <circle cx="3" cy="7" r="1"/>
+                              <circle cx="7" cy="7" r="1"/>
+                              <circle cx="11" cy="7" r="1"/>
+                            </svg>
                       </button>
                       {deleteMenuOpen === thread.id && (
-                        <div className="absolute right-0 top-full mt-1 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 w-32 z-50" ref={deleteMenuRef}>
-                          <button onClick={() => deleteThread(thread.id)} className="w-full px-3 py-1.5 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors">Delete</button>
-                        </div>
+                          <div
+                              className="absolute right-0 top-full mt-1 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 w-32 z-50">
+                            <button onClick={() => {
+                              setNewThreadName(thread.title);
+                              setRenameThreadId(thread.id);
+                              setDeleteMenuOpen(null);
+                            }} className="w-full px-3 py-1.5 text-left text-[13px] hover:bg-[#f5f5f5]">Rename
+                            </button>
+                            <button onClick={() => deleteThread(thread.id)}
+                                    className="w-full px-3 py-1.5 text-left text-[13px] text-red-600 hover:bg-red-50">Delete
+                            </button>
+                          </div>
                       )}
                     </div>
                   )}
@@ -472,8 +504,11 @@ export default function CB4Chat({
 
             <div className="border-t border-[#e0ddd4] p-3">
               <div className="relative" ref={userDropdownRef}>
-                <button onClick={() => setUserDropdownOpen(!userDropdownOpen)} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[13px] font-medium flex-shrink-0" style={{ backgroundColor: '#d97757' }}>
+                <button onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors">
+                  <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[13px] font-medium flex-shrink-0"
+                      style={{backgroundColor: '#d97757'}}>
                     {userName ? userName.charAt(0).toUpperCase() : (userEmail?.charAt(0).toUpperCase() || 'U')}
                   </div>
                   <div className="flex-1 text-left min-w-0">
@@ -498,30 +533,60 @@ export default function CB4Chat({
         )}
       </aside>
 
+
+      {renameThreadId && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6 w-96">
+          <h3 className="text-lg font-semibold mb-4">Rename Chat</h3>
+          <input
+            type="text"
+            value={newThreadName}
+            onChange={(e) => setNewThreadName(e.target.value)}
+            className="w-full px-3 py-2 border border-[#e0ddd4] rounded-lg mb-4"
+            placeholder="New chat name"
+          />
+          <div className="flex gap-2">
+            <button onClick={renameThread} className="flex-1 px-4 py-2 bg-[#d97757] text-white rounded-lg">Save</button>
+            <button onClick={() => setRenameThreadId(null)} className="flex-1 px-4 py-2 bg-gray-200 rounded-lg">Cancel</button>
+          </div>
+        </div>
+      </div>
+    )}
       {/* Main chat area */}
       <main className="flex-1 flex flex-col min-w-0">
-        <header className="bg-[#f7f5ef] border-b border-[#e0ddd4] px-6 py-3 flex items-center gap-4">
-          <span className="text-xl">{projectEmoji}</span>
-          <h2 className="text-[15px] font-medium text-[#2d2d2d]">{currentThreadTitle}</h2>
+        <header className="bg-[#f7f5ef] border-b border-[#e0ddd4] px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <span className="text-xl">{projectEmoji}</span>
+            <h2 className="text-[15px] font-medium text-[#2d2d2d]">{currentThreadTitle}</h2>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-white border border-[#e0ddd4] rounded-lg">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="#d97757">
+                <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" fill="none"/>
+                <text x="8" y="11" fontSize="8" textAnchor="middle" fill="currentColor">$</text>
+              </svg>
+              <CreditBalance userId={userId}/>
+            </div>
+          </div>
         </header>
 
         {contextWarning && (
-          <div className="bg-[#fff3cd] border-b border-[#ffc107] px-6 py-3">
-            <div className="max-w-[800px] mx-auto flex items-center gap-3">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="#856404">
-                <path d="M10 2L2 18h16L10 2 zm0 3l6 11H4l6-11zm0 3v4h1V8h-1zm0 5v1h1v-1h-1z"/>
-              </svg>
-              <p className="text-[14px] text-[#856404]">
-                <strong>Warning:</strong> Longer chats will use credits faster due to increased context
-              </p>
+            <div className="bg-[#fff3cd] border-b border-[#ffc107] px-6 py-3">
+              <div className="max-w-[800px] mx-auto flex items-center gap-3">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="#856404">
+                  <path d="M10 2L2 18h16L10 2 zm0 3l6 11H4l6-11zm0 3v4h1V8h-1zm0 5v1h1v-1h-1z"/>
+                </svg>
+                <p className="text-[14px] text-[#856404]">
+                  <strong>Warning:</strong> Longer chats will use credits faster due to increased context
+                </p>
+              </div>
             </div>
-          </div>
         )}
 
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-[800px] mx-auto px-6 py-8">
             {messages.length === 0 ? (
-              <div className="text-center py-16">
+                <div className="text-center py-16">
                 <div className="w-16 h-16 rounded-2xl mx-auto mb-6 flex items-center justify-center text-3xl">{projectEmoji}</div>
                 <h3 className="text-[24px] font-normal text-[#2d2d2d] mb-2">Welcome to {projectName}</h3>
                 <p className="text-[15px] text-[#6b6b6b]">Ask me anything...</p>

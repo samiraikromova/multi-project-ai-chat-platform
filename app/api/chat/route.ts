@@ -49,7 +49,31 @@ export async function POST(request: Request) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     const actualUserId = user?.id || userId
+    const { data: creditCheck } = await supabase
+      .from('users')
+      .select('credits, subscription_tier')
+      .eq('id', actualUserId)
+      .single()
 
+    if ((creditCheck?.credits || 0) <= 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'Insufficient credits'
+      }, { status: 402 })
+    }
+
+    const { data: userCredit } = await supabase
+    .from('users')
+    .select('credits')
+    .eq('id', actualUserId)
+    .single()
+
+  if ((userCredit?.credits || 0) <= 0) {
+    return NextResponse.json({
+      success: false,
+      error: 'Insufficient credits. Please upgrade.'
+    }, { status: 402 })
+  }
     // Ensure user exists in Zep
     const userMetadata = user?.user_metadata || {}
     await ensureZepUser(
@@ -251,9 +275,26 @@ export async function POST(request: Request) {
       console.error('❌ Usage logging error:', usageError)
     } else {
       console.log('✅ Usage logged:', { totalInputTokens, outputTokens: fallbackOutputTokens, estimatedCost })
-    }
+      const { data: userData } = await supabase
+      .from('users')
+      .select('credits')
+      .eq('id', actualUserId)
+      .single()
 
-    // Update thread timestamp
+    const newCredits = (userData?.credits || 0) - estimatedCost
+
+    await supabase
+      .from('users')
+      .update({ credits: newCredits })
+      .eq('id', actualUserId)
+    }
+    // Deduct credits
+    const creditCost = estimatedCost * 1000 // Convert to credits (1 credit = $0.001)
+    const { data: currentUser } = await supabase.from('users').select('credits').eq('id', actualUserId).single()
+    const newCredits = (currentUser?.credits || 0) - creditCost
+    await supabase.from('users').update({ credits: newCredits }).eq('id', actualUserId)
+
+        // Update thread timestamp
     await supabase.from('chat_threads')
       .update({ updated_at: new Date().toISOString() })
       .eq('id', currentThreadId)
