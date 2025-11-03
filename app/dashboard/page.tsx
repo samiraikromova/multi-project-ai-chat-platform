@@ -32,6 +32,10 @@ export default function DashboardPage() {
     await supabase.auth.signOut()
     router.push('/auth/login')
   }
+  function handleUpgrade() {
+  router.push('/app/pricing')
+}
+
 
   if (loading) {
     return (
@@ -120,15 +124,24 @@ export default function DashboardPage() {
               </button>
 
               {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 z-50">
+                  <div
+                      className="absolute right-0 mt-2 w-48 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 z-50">
 
-                  <button
-                    onClick={handleLogout}
-                    className="w-full text-left px-4 py-2 text-[14px] text-red-600 hover:bg-red-50 transition-colors"
-                  >
-                    Logout
-                  </button>
-                </div>
+                    <button
+                        onClick={handleUpgrade}
+                        className="w-full text-left px-4 py-2 text-[14px] text-[#2d2d2d] hover:bg-[#f9f9f9] transition-colors"
+                    >
+                      Upgrade
+                    </button>
+
+                    <button
+                        onClick={handleLogout}
+                        className="w-full text-left px-4 py-2 text-[14px] text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      Logout
+                    </button>
+
+                  </div>
               )}
             </div>
           )}

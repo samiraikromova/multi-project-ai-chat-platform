@@ -419,9 +419,21 @@ export default function CB4Chat({
                 {userName ? userName.charAt(0).toUpperCase() : (userEmail?.charAt(0).toUpperCase() || 'U')}
               </button>
               {userDropdownOpen && (
-                <div className="absolute bottom-full left-12 mb-2 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 w-48 z-50">
-                  <button onClick={handleLogout} className="w-full px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors">Logout</button>
-                </div>
+                  <div
+                      className="absolute bottom-full left-12 mb-2 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 w-48 z-50">
+                    <button
+                        onClick={() => router.push('/pricing')}
+                        className="w-full text-left px-4 py-2 text-[14px] text-[#2d2d2d] hover:bg-[#dcdcdc] transition-colors"
+                    >
+                      Upgrade
+                    </button>
+
+
+                    <button onClick={handleLogout}
+                            className="w-full px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors">Logout
+                    </button>
+                  </div>
+
               )}
             </div>
           </div>
@@ -519,13 +531,23 @@ export default function CB4Chat({
                   </svg>
                 </button>
                 {userDropdownOpen && (
-                  <div className="absolute bottom-full left-0 mb-2 w-full bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1">
-                    <div className="px-3 py-2 border-b border-[#e0ddd4]">
-                      <div className="text-[13px] text-[#2d2d2d] font-medium truncate">{userName || 'User'}</div>
-                      <div className="text-[11px] text-[#8b8b8b] truncate">{userEmail}</div>
+                    <div
+                        className="absolute bottom-full left-0 mb-2 w-full bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1">
+                      <div className="px-3 py-2 border-b border-[#e0ddd4]">
+                        <div className="text-[13px] text-[#2d2d2d] font-medium truncate">{userName || 'User'}</div>
+                        <div className="text-[11px] text-[#8b8b8b] truncate">{userEmail}</div>
+                      </div>
+                      <button
+                          onClick={() => router.push('/pricing')}
+                        className="w-full text-left px-4 py-2 text-[14px] text-[#2d2d2d] hover:bg-[#dcdcdc] transition-colors"
+                      >
+                        Upgrade
+                      </button>
+
+                      <button onClick={handleLogout}
+                              className="w-full px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors">Logout
+                      </button>
                     </div>
-                    <button onClick={handleLogout} className="w-full px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors">Logout</button>
-                  </div>
                 )}
               </div>
             </div>
