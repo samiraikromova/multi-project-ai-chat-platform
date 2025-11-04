@@ -55,7 +55,7 @@ export async function POST(req: Request) {
     const supabase = await createClient();
 
     // 7. Find or create user
-    let { data: user, error: userError } = await supabase
+    const { data: user, error: userError } = await supabase
       .from('users')
       .select('id, credits, email, subscription_tier')
       .eq('email', email)
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
         console.error('❌ Failed to create user:', createError);
         return NextResponse.json({ error: 'User creation failed' }, { status: 500 });
       }
-      user = newUser;
+      const user = newUser;
     }
 
     // Type guard to ensure user is not null
