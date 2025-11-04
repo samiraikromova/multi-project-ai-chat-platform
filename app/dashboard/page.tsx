@@ -128,7 +128,7 @@ export default function DashboardPage() {
                       className="absolute right-0 mt-2 w-48 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 z-50">
 
                     <button
-                        onClick={handleUpgrade}
+                        onClick={() => router.push('/pricing')}
                         className="w-full text-left px-4 py-2 text-[14px] text-[#2d2d2d] hover:bg-[#f9f9f9] transition-colors"
                     >
                       Upgrade
