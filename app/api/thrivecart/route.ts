@@ -82,7 +82,15 @@ export async function POST(req: Request) {
   try {
     // 1. Parse form-encoded data (ThriveCart format)
     const body = await parseFormData(req);
-
+    try {
+      if (typeof body.customer === "string") body.customer = JSON.parse(body.customer);
+      if (typeof body.order === "string") body.order = JSON.parse(body.order);
+      if (typeof body.subscriptions === "string") body.subscriptions = JSON.parse(body.subscriptions);
+      if (typeof body.subscription_ids === "string") body.subscription_ids = JSON.parse(body.subscription_ids);
+      if (typeof body.fulfillment === "string") body.fulfillment = JSON.parse(body.fulfillment);
+    } catch (err) {
+      console.error("⚠️ Failed to parse nested JSON fields", err);
+    }
     // 2. Enhanced logging
     console.log('='.repeat(60));
     console.log('🔔 ThriveCart Webhook Received');
@@ -105,10 +113,10 @@ export async function POST(req: Request) {
     }
 
     // 4. Extract data
-    const email = body.customer?.email || body.customer_email;
-    const productId = parseInt(body.base_product);
+    const email = body.customer?.email || body.customer_email || body.email;
+    const productId = parseInt(body.base_product || body.product?.id);
     const event = body.event;
-    const _orderId = body.order_id;
+    const orderId = body.order_id || body.id;
     const mode = body.mode; // 'test' or 'live'
 
     console.log('📧 Extracted Email:', email);
@@ -144,12 +152,9 @@ export async function POST(req: Request) {
     const supabase = await createClient();
 
     // Test connection
-    const { error: testError } = await supabase.from('users').select('count').limit(1);
-    if (testError) {
-      console.error('❌ Supabase connection failed:', testError);
-      return NextResponse.json({ error: 'Database connection failed' }, { status: 500 });
-    }
-    console.log('✅ Supabase connected successfully');
+    const { error: testError } = await supabase.from('users').select('id').limit(1);
+    if (testError) console.error("❌ Supabase connection failed", testError);
+
 
     // 8. Find or create user
     console.log(`🔍 Looking for user with email: ${email}`);
