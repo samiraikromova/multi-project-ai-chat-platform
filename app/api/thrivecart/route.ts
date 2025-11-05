@@ -108,7 +108,7 @@ export async function POST(req: Request) {
     const email = body.customer?.email || body.customer_email;
     const productId = parseInt(body.base_product);
     const event = body.event;
-    const orderId = body.order_id;
+    const _orderId = body.order_id;
     const mode = body.mode; // 'test' or 'live'
 
     console.log('📧 Extracted Email:', email);
@@ -153,11 +153,14 @@ export async function POST(req: Request) {
 
     // 8. Find or create user
     console.log(`🔍 Looking for user with email: ${email}`);
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('id, credits, email, subscription_tier')
-      .eq('email', email)
-      .maybeSingle(); // Use maybeSingle() instead of single() to avoid errors when not found
+    const { data: existingUser, error: _userError } = await supabase
+    .from('users')
+    .select('id, credits, email, subscription_tier')
+    .eq('email', email)
+    .maybeSingle();
+
+  let user = existingUser;
+
 
     if (!user) {
       console.log('⚠️ User not found, creating new user...');
