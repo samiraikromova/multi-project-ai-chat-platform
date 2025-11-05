@@ -153,7 +153,7 @@ export async function POST(req: Request) {
 
     // 8. Find or create user
     console.log(`🔍 Looking for user with email: ${email}`);
-    let { data: user, error: userError } = await supabase
+    const { data: user, error: userError } = await supabase
       .from('users')
       .select('id, credits, email, subscription_tier')
       .eq('email', email)
