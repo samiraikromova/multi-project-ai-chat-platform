@@ -1,6 +1,9 @@
+// app/dashboard/project/[id]/page.tsx
 "use client"
 
 import CB4Chat from "@/components/chat/CB4Chat"
+import ImageGeneratorChat from "@/components/chat/ImageGeneratorChat"
+import HooksGeneratorChat from "@/components/chat/HooksGeneratorChat"
 import { createClient } from "@/lib/supabase/client"
 import { useEffect, useState } from "react"
 import { use } from "react"
@@ -16,6 +19,7 @@ interface ProjectData {
   icon: string
   system_prompt: string
   color: string
+  project_type?: string
 }
 
 export default function ProjectPage({ params }: ProjectPageProps) {
@@ -29,7 +33,6 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     async function fetchData() {
       const supabase = createClient()
 
-      // Get user
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         setError("User not logged in")
@@ -38,10 +41,9 @@ export default function ProjectPage({ params }: ProjectPageProps) {
       }
       setUserId(user.id)
 
-      // Get project data from Supabase
       const { data: project, error: projectError } = await supabase
         .from('projects')
-        .select('id, name, slug, icon, system_prompt, color')
+        .select('id, name, slug, icon, system_prompt, color, project_type')
         .eq('slug', resolvedParams.id)
         .eq('is_active', true)
         .single()
@@ -94,17 +96,26 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     )
   }
 
+  const chatProps = {
+    userId,
+    projectId: projectData.id,
+    projectSlug: projectData.slug,
+    projectName: projectData.name,
+    projectEmoji: projectData.icon,
+    systemPrompt: projectData.system_prompt,
+    _projectColor: projectData.color,
+  }
+
+  // ✅ Render specialized chat components based on project type
   return (
     <div className="h-screen">
-      <CB4Chat
-        userId={userId}
-        projectId={projectData.id}
-        projectSlug={projectData.slug}
-        projectName={projectData.name}
-        projectEmoji={projectData.icon}
-        systemPrompt={projectData.system_prompt}
-        _projectColor={projectData.color}
-      />
+      {projectData.project_type === 'image_generator' ? (
+        <ImageGeneratorChat {...chatProps} />
+      ) : projectData.project_type === 'hooks_generator' ? (
+        <HooksGeneratorChat {...chatProps} />
+      ) : (
+        <CB4Chat {...chatProps} />
+      )}
     </div>
   )
 }

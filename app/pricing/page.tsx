@@ -1,12 +1,29 @@
+"use client"
 import ThrivecartEmbed from "@/components/thrivecart/ThrivecartEmbed";
 
 export default function Pricing() {
   return (
     <div className="min-h-screen bg-[#faf9f6] py-16 px-6">
-      {/* ✅ Client-side Thrivecart loader */}
       <ThrivecartEmbed />
 
       <div className="max-w-5xl mx-auto text-center mb-12">
+        <button
+            onClick={() => window.location.href = '/dashboard'}
+            className="inline-flex items-center gap-2 text-[14px] text-[#6b6b6b] hover:text-[#2d2d2d] mb-6"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M10 4L6 8l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+          Back to Dashboard
+        </button>
+
+        <button
+            onClick={() => window.location.href = '/auth/redeem-coupon'}
+            className="ml-4 text-[14px] text-[#d97757] hover:text-[#c86545] font-medium"
+        >
+          Have a coupon code?
+        </button>
+
         <h1 className="text-4xl font-extrabold text-[#2d2d2d] mb-3">
           Choose Your Plan
         </h1>
@@ -16,8 +33,9 @@ export default function Pricing() {
       </div>
 
       <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-        {/* 🌱 Starter Tier */}
-        <div className="border border-[#e0ddd4] bg-white rounded-2xl p-6 flex flex-col shadow-sm hover:shadow-md transition-shadow">
+        {/* Starter Tier */}
+        <div
+            className="border border-[#e0ddd4] bg-white rounded-2xl p-6 flex flex-col shadow-sm hover:shadow-md transition-shadow">
           <div>
             <h3 className="text-2xl font-semibold mb-2 text-[#2d2d2d]">Starter</h3>
             <p className="text-4xl font-bold text-[#d97757] mb-4">
@@ -43,9 +61,8 @@ export default function Pricing() {
           </div>
         </div>
 
-        {/* 🚀 Pro Tier */}
+        {/* Pro Tier */}
         <div className="relative border-2 border-[#d97757] bg-white rounded-2xl p-6 flex flex-col shadow-md hover:shadow-lg transition-shadow">
-          {/* ✅ Fixed badge (aligned to border, not rounded all sides) */}
           <div className="absolute top-0 right-0">
             <div className="bg-[#d97757] text-white text-xs font-semibold px-3 py-1 rounded-tr-xl rounded-bl-md">
               BEST VALUE
@@ -77,6 +94,18 @@ export default function Pricing() {
               Subscribe
             </a>
           </div>
+        </div>
+
+        {/* Top-Up Credits Section */}
+        <div className="max-w-5xl mx-auto mt-16 text-center">
+          <h2 className="text-2xl font-bold text-[#2d2d2d] mb-3">Need More Credits?</h2>
+          <p className="text-[#6b6b6b] mb-6">Purchase credits anytime without a subscription</p>
+          <button
+            onClick={() => window.location.href = '/pricing/top-up'}
+            className="px-8 py-3 bg-white border-2 border-[#d97757] text-[#d97757] font-semibold rounded-lg hover:bg-[#d97757] hover:text-white transition-colors"
+          >
+            View Top-Up Options
+          </button>
         </div>
       </div>
     </div>

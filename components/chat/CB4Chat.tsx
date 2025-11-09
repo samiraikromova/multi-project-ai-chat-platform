@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import CreditBalance from "@/components/CreditBalance"
+import ReactMarkdown from 'react-markdown'
 
 
 interface Message {
@@ -425,7 +426,7 @@ export default function CB4Chat({
                         onClick={() => router.push('/pricing')}
                         className="w-full text-left px-4 py-2 text-[14px] text-[#2d2d2d] hover:bg-[#dcdcdc] transition-colors"
                     >
-                      Upgrade
+                      Upgrade to Pro
                     </button>
 
 
@@ -462,12 +463,16 @@ export default function CB4Chat({
               <button onClick={() => router.push('/dashboard')}
                       className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors text-[13px] text-[#6b6b6b]">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M14 8H2M6 4l-4 4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M14 8H2M6 4l-4 4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
+                        strokeLinejoin="round"/>
                 </svg>
                 All Projects
               </button>
 
-              <button onClick={createNewThread} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[#d97757] hover:bg-[#c86545] transition-colors text-[14px] text-white font-medium">
+
+
+              <button onClick={createNewThread}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[#d97757] hover:bg-[#c86545] transition-colors text-[14px] text-white font-medium">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                   <path d="M8 4v8M4 8h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                 </svg>
@@ -477,11 +482,12 @@ export default function CB4Chat({
 
             <div className="flex-1 overflow-y-auto px-2">
               {threads.length > 0 && (
-                <div className="text-[11px] text-[#8b8b8b] px-3 py-2 font-medium">RECENT CHATS</div>
+                  <div className="text-[11px] text-[#8b8b8b] px-3 py-2 font-medium">RECENT CHATS</div>
               )}
               {threads.map(thread => (
-                <div key={thread.id} className="relative group mb-1">
-                  <button onClick={() => setCurrentThreadId(thread.id)} className={`w-full text-left px-3 py-2 rounded-lg text-[13px] transition-colors ${currentThreadId === thread.id ? 'bg-[#e8e6df] text-[#2d2d2d] font-medium' : 'text-[#6b6b6b] hover:bg-[#e8e6df]/50'}`}>
+                  <div key={thread.id} className="relative group mb-1">
+                    <button onClick={() => setCurrentThreadId(thread.id)}
+                            className={`w-full text-left px-3 py-2 rounded-lg text-[13px] transition-colors ${currentThreadId === thread.id ? 'bg-[#e8e6df] text-[#2d2d2d] font-medium' : 'text-[#6b6b6b] hover:bg-[#e8e6df]/50'}`}>
                     <div className="truncate">{thread.title}</div>
                   </button>
                   {currentThreadId === thread.id && (
@@ -541,7 +547,7 @@ export default function CB4Chat({
                           onClick={() => router.push('/pricing')}
                         className="w-full text-left px-4 py-2 text-[14px] text-[#2d2d2d] hover:bg-[#dcdcdc] transition-colors"
                       >
-                        Upgrade
+                        Upgrade to Pro
                       </button>
 
                       <button onClick={handleLogout}
@@ -617,13 +623,16 @@ export default function CB4Chat({
               <div className="space-y-6">
                 {messages.map(msg => (
                   <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'text-white bg-[#d97757]' : 'bg-white border border-[#e0ddd4] text-[#2d2d2d]'}`}>
-                      <p className="text-[15px] leading-[1.6] whitespace-pre-wrap">{msg.content}</p>
+                    <div
+                        className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'text-white bg-[#d97757]' : 'bg-white border border-[#e0ddd4] text-[#2d2d2d]'}`}>
+                      <div className="text-[15px] leading-[1.6] prose prose-sm max-w-none">
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      </div>
                     </div>
                   </div>
                 ))}
                 {loading && (
-                  <div className="flex justify-start">
+                    <div className="flex justify-start">
                     <div className="bg-white border border-[#e0ddd4] rounded-2xl px-4 py-3">
                       <div className="flex gap-1.5">
                         <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: '#d97757' }}/>
