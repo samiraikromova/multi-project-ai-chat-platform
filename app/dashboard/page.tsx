@@ -87,71 +87,73 @@ export default function DashboardPage() {
       <header className="border-b border-[#e0ddd4] bg-white">
         <div className="max-w-[1400px] mx-auto px-8 py-4 flex justify-between items-center">
           <h1 className="text-[18px] font-semibold text-[#2d2d2d]">AI Chat Platform</h1>
-          <button
-              onClick={() => router.push('/dashboard/courses')}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors text-[13px] text-[#6b6b6b]"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <rect x="2" y="3" width="12" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/>
-              <circle cx="6" cy="7" r="1.5" fill="currentColor"/>
-              <path d="M7 7l3 2V5l-3 2z" fill="currentColor"/>
-            </svg>
-            Course Library
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+                onClick={() => router.push('/dashboard/courses')}
+                className="flex items-center gap-2 px-4 py-2 text-[14px] text-[#6b6b6b] hover:text-[#2d2d2d] hover:bg-[#f5f5f5] rounded-lg transition-colors"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <rect x="2" y="3" width="12" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/>
+                <circle cx="6" cy="7" r="1.5" fill="currentColor"/>
+                <path d="M7 7l3 2V5l-3 2z" fill="currentColor"/>
+              </svg>
+              Course Library
+            </button>
+          </div>
 
-          {user && (
-              <div className="relative">
-                <button
-                    onClick={() => setShowUserMenu(!showUserMenu)}
-                    className="flex items-center space-x-3 hover:opacity-80 transition-opacity"
-                >
-                  <div
-                      className="w-8 h-8 rounded-full bg-[#d97757] flex items-center justify-center text-white text-[14px] font-medium">
-                    {user.user_metadata?.full_name
-                        ? user.user_metadata.full_name.charAt(0).toUpperCase()
-                        : (user.email?.charAt(0).toUpperCase() || 'U')}
-                  </div>
-                  <span className="text-[14px] text-[#2d2d2d]">
+                {user && (
+                    <div className="relative">
+                      <button
+                          onClick={() => setShowUserMenu(!showUserMenu)}
+                          className="flex items-center space-x-3 hover:opacity-80 transition-opacity"
+                      >
+                        <div
+                            className="w-8 h-8 rounded-full bg-[#d97757] flex items-center justify-center text-white text-[14px] font-medium">
+                          {user.user_metadata?.full_name
+                              ? user.user_metadata.full_name.charAt(0).toUpperCase()
+                              : (user.email?.charAt(0).toUpperCase() || 'U')}
+                        </div>
+                        <span className="text-[14px] text-[#2d2d2d]">
                   {user.user_metadata?.full_name || user.email}
                 </span>
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                    <path d="M6 8L3 5h6L6 8z"/>
-                  </svg>
-                </button>
-
-                {showUserMenu && (
-                    <div
-                        className="absolute right-0 mt-2 w-48 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 z-50">
-                      <div className="px-4 py-2 border-b border-[#e0ddd4]">
-                        <div className="text-[11px] text-[#8b8b8b] mb-1">Credits</div>
-                        <CreditBalance userId={user.id}/>
-                      </div>
-
-                      <button
-                          onClick={() => router.push('/pricing/top-up')}
-                          className="w-full text-left px-4 py-2 text-[14px] text-[#2d2d2d] hover:bg-[#dcdcdc] transition-colors"
-                      >
-                        Top Up Credits
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M6 8L3 5h6L6 8z"/>
+                        </svg>
                       </button>
 
-                      <button
-                          onClick={() => router.push('/pricing')}
-                          className="w-full text-left px-4 py-2 text-[14px] text-[#2d2d2d] hover:bg-[#f9f9f9] transition-colors"
-                      >
-                        Upgrade to Pro
-                      </button>
+                      {showUserMenu && (
+                          <div
+                              className="absolute right-0 mt-2 w-48 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 z-50">
+                            <div className="px-4 py-2 border-b border-[#e0ddd4]">
+                              <div className="text-[11px] text-[#8b8b8b] mb-1">Credits</div>
+                              <CreditBalance userId={user.id}/>
+                            </div>
 
-                      <button
-                          onClick={handleLogout}
-                          className="w-full text-left px-4 py-2 text-[14px] text-red-600 hover:bg-red-50 transition-colors"
-                      >
-                        Logout
-                      </button>
+                            <button
+                                onClick={() => router.push('/pricing/top-up')}
+                                className="w-full text-left px-4 py-2 text-[14px] text-[#2d2d2d] hover:bg-[#dcdcdc] transition-colors"
+                            >
+                              Top Up Credits
+                            </button>
+
+                            <button
+                                onClick={() => router.push('/pricing')}
+                                className="w-full text-left px-4 py-2 text-[14px] text-[#2d2d2d] hover:bg-[#f9f9f9] transition-colors"
+                            >
+                              Upgrade to Pro
+                            </button>
+
+                            <button
+                                onClick={handleLogout}
+                                className="w-full text-left px-4 py-2 text-[14px] text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                              Logout
+                            </button>
+                          </div>
+                      )}
                     </div>
                 )}
               </div>
-          )}
-        </div>
       </header>
 
       {/* Projects Section */}

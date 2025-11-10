@@ -17,8 +17,8 @@ const PRODUCT_CONFIG: Record<number, { tier: string; monthlyCredits: number; pri
   // Top-ups (one-time purchases)
   9: { tier: 'free', monthlyCredits: 1000, price: 10, type: 'topup' },
   10: { tier: 'free', monthlyCredits: 2500, price: 25, type: 'topup' },
-  11: { tier: 'free', monthlyCredits: 5000, price: 50, type: 'topup' },
-  12: { tier: 'free', monthlyCredits: 10000, price: 100, type: 'topup' },
+  12: { tier: 'free', monthlyCredits: 5000, price: 50, type: 'topup' },
+  13: { tier: 'free', monthlyCredits: 10000, price: 100, type: 'topup' },
 };
 
 // Parse form-encoded data

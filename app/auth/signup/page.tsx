@@ -30,9 +30,18 @@ export default function SignupPage() {
     if (error) {
       setError(error.message)
       setLoading(false)
+      return
+    }
+
+    if (data.user) {
+      // Store user email in localStorage for payment flow
+      localStorage.setItem('pendingPaymentEmail', email)
+      router.push('/auth/payment-required')
     } else {
       router.push('/dashboard')
     }
+
+    setLoading(false)
   }
 
   return (

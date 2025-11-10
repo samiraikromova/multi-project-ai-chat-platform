@@ -38,27 +38,26 @@ export async function middleware(request: NextRequest) {
   }
 
   // Check subscription for protected routes
-  if (user && request.nextUrl.pathname.startsWith('/dashboard/project')) {
-    const { data: userData } = await supabase
-      .from('users')
-      .select('subscription_tier, credits')
-      .eq('id', user.id)
-      .single()
+  if (user && !request.nextUrl.pathname.startsWith('/auth') && !request.nextUrl.pathname.startsWith('/pricing')) {
+  const { data: userData } = await supabase
+    .from('users')
+    .select('subscription_tier, credits')
+    .eq('id', user.id)
+    .single()
 
-    // Check if has active subscription or credits
-    if (userData) {
-      const hasAccess =
-        userData.subscription_tier !== 'free' ||
-        Number(userData.credits) > 0
+  // ✅ Block users with no subscription AND no credits
+  if (userData) {
+    const hasAccess =
+      userData.subscription_tier !== 'free' ||
+      Number(userData.credits) > 0
 
-      if (!hasAccess) {
-        const url = request.nextUrl.clone()
-        url.pathname = '/pricing'
-        url.searchParams.set('reason', 'subscription_required')
-        return NextResponse.redirect(url)
-      }
+    if (!hasAccess && !request.nextUrl.pathname.startsWith('/auth/payment-required')) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/auth/payment-required'
+      return NextResponse.redirect(url)
     }
   }
+}
 
   return supabaseResponse
 }

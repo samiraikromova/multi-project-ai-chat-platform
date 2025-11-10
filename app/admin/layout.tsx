@@ -74,6 +74,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <Link href="../admin/usage" className="text-[14px] text-[#6b6b6b] hover:text-[#d97757] transition-colors">
             Usage Stats
           </Link>
+          <Link href="../admin/projects" className="text-[14px] text-[#6b6b6b] hover:text-[#d97757] transition-colors">
+            Projects
+          </Link>
+          <Link href="../admin/coupons" className="text-[14px] text-[#6b6b6b] hover:text-[#d97757] transition-colors">
+            Coupons
+          </Link>
+          <Link href="../admin/credits" className="text-[14px] text-[#6b6b6b] hover:text-[#d97757] transition-colors">
+            Credits
+          </Link>
           <Link href="../dashboard" className="text-[14px] text-[#6b6b6b] hover:text-[#d97757] transition-colors ml-auto">
             ← Dashboard
           </Link>

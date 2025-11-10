@@ -62,6 +62,7 @@ export default function RedeemCoupon() {
       return
     }
 
+
     // Apply coupon
     if (coupon.type === 'trial') {
       // Grant trial credits (e.g., 3 months worth)
@@ -89,6 +90,9 @@ export default function RedeemCoupon() {
         .eq('code', code.toUpperCase())
 
       setMessage(`Success! ${trialCredits} credits added to your account`)
+      localStorage.removeItem('pendingPaymentEmail')
+
+      setTimeout(() => router.push('/dashboard'), 2000)
       setTimeout(() => router.push('/dashboard'), 2000)
     }
 
@@ -104,18 +108,24 @@ export default function RedeemCoupon() {
         </p>
 
         <input
-          type="text"
-          value={code}
-          onChange={(e) => setCode(e.target.value.toUpperCase())}
-          placeholder="COUPON-CODE"
-          className="w-full px-4 py-3 border border-[#e0ddd4] rounded-lg text-[15px] mb-4 uppercase"
-          disabled={loading}
+            type="text"
+            value={code}
+            onChange={(e) => setCode(e.target.value.toUpperCase())}
+            onPaste={(e) => {
+              e.preventDefault()
+              const pasted = e.clipboardData.getData('text').toUpperCase().trim()
+              setCode(pasted)
+            }}
+            placeholder="COUPON-CODE"
+            className="w-full px-4 py-3 border border-[#e0ddd4] rounded-lg text-[15px] mb-4 uppercase"
+            disabled={loading}
         />
 
         <button
-          onClick={redeemCoupon}
-          disabled={loading || !code}
-          className="w-full px-4 py-3 bg-[#d97757] hover:bg-[#c86545] text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={redeemCoupon}
+            disabled={loading || !code.trim()}
+
+            className="w-full px-4 py-3 bg-[#d97757] hover:bg-[#c86545] text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? "Redeeming..." : "Redeem Coupon"}
         </button>
