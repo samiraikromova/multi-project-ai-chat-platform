@@ -31,6 +31,9 @@ export default function ImageGeneratorChat(props: ImageGenProps) {
   const [images, setImages] = useState<GeneratedImage[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [userDropdownOpen, setUserDropdownOpen] = useState(false)
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [aspectDropdownOpen, setAspectDropdownOpen] = useState(false);
+  const [styleDropdownOpen, setStyleDropdownOpen] = useState(false)
   const [userName, setUserName] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
 
@@ -58,6 +61,29 @@ export default function ImageGeneratorChat(props: ImageGenProps) {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+    useEffect(() => {
+    loadImages()
+  }, [])
+
+  async function loadImages() {
+    const { data } = await supabase
+      .from('generated_images')
+      .select('*')
+      .eq('user_id', props.userId)
+      .eq('project_id', props.projectId)
+      .order('created_at', { ascending: false })
+      .limit(20)
+
+    if (data) {
+      setImages(data.map(img => ({
+        id: img.id,
+        url: img.image_url,
+        prompt: img.prompt,
+        created_at: img.created_at
+      })))
+    }
+  }
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -243,31 +269,6 @@ export default function ImageGeneratorChat(props: ImageGenProps) {
           </div>
         </header>
 
-        {/* Generation Controls */}
-        <div className="border-b border-[#e0ddd4] bg-white px-6 py-4">
-          <div className="max-w-[800px] mx-auto">
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-[13px] font-medium text-[#6b6b6b] mb-2">Style</label>
-                <select value={style} onChange={(e) => setStyle(e.target.value)} className="w-full px-3 py-2 border border-[#e0ddd4] rounded-lg text-[14px] bg-white">
-                  <option value="realistic">Realistic</option>
-                  <option value="artistic">Artistic</option>
-                  <option value="cartoon">Cartoon</option>
-                  <option value="3d">3D Render</option>
-                  <option value="anime">Anime</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[13px] font-medium text-[#6b6b6b] mb-2">Aspect Ratio</label>
-                <select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value)} className="w-full px-3 py-2 border border-[#e0ddd4] rounded-lg text-[14px] bg-white">
-                  <option value="1:1">Square (1:1)</option>
-                  <option value="16:9">Landscape (16:9)</option>
-                  <option value="9:16">Portrait (9:16)</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* Image Gallery */}
         <div className="flex-1 overflow-y-auto p-6">
@@ -287,9 +288,6 @@ export default function ImageGeneratorChat(props: ImageGenProps) {
                   <div className="p-4">
                     <p className="text-[14px] text-[#2d2d2d] mb-3">{img.prompt}</p>
                     <div className="flex gap-2">
-                      <button onClick={() => downloadImage(img.url, img.prompt)} className="flex-1 px-3 py-2 bg-[#d97757] hover:bg-[#c86545] text-white rounded-lg text-[13px] font-medium transition-colors">
-                        Download
-                      </button>
                       <button onClick={() => window.open(img.url, '_blank')} className="px-3 py-2 border border-[#e0ddd4] hover:bg-[#f5f5f5] rounded-lg text-[13px] transition-colors">
                         View
                       </button>
@@ -310,27 +308,122 @@ export default function ImageGeneratorChat(props: ImageGenProps) {
           </div>
         </div>
 
-        {/* Prompt Input */}
+
         <div className="border-t border-[#e0ddd4] bg-[#f7f5ef] p-6">
           <div className="max-w-[800px] mx-auto">
-            <div className="bg-white border-2 border-[#e0ddd4] rounded-2xl shadow-sm focus-within:border-[#d97757] transition-colors flex items-center gap-2 px-4 py-3">
+            {/* Style & Aspect Controls */}
+            <div className="flex gap-3 mb-3">
+              <div className="relative">
+                <button
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e0ddd4] rounded-xl text-[13px] text-[#2d2d2d] hover:border-[#d97757] transition-all"
+                    onClick={() => setStyleDropdownOpen(!styleDropdownOpen)}
+                >
+                  🎨 {style.charAt(0).toUpperCase() + style.slice(1)}
+                  <svg
+                      className="w-4 h-4 text-[#6b6b6b] transition-colors"
+                      viewBox="0 0 20 20"
+                      fill="none"
+                  >
+                    <path d="M5 8l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                </button>
+
+                {/* Dropdown menu */}
+                {styleDropdownOpen && (
+                    <div
+                        className="absolute bottom-full mb-2 bg-white border border-[#e0ddd4] rounded-xl shadow-lg w-44 z-50 animate-fadeIn"
+                        onMouseLeave={() => setStyleDropdownOpen(false)} // optional: close when leaving dropdown
+                    >
+                      {["realistic", "artistic", "cartoon", "3d", "anime"].map((opt) => (
+                          <button
+                              key={opt}
+                              onClick={() => {
+                                setStyle(opt)
+                                setStyleDropdownOpen(false) // close after selecting
+                              }}
+                              className={`block w-full text-left px-4 py-2 text-[13px] hover:bg-[#f7f5ef] transition-colors ${
+                                  style === opt ? "text-[#d97757] font-medium" : "text-[#2d2d2d]"
+                              }`}
+                          >
+                            {opt.charAt(0).toUpperCase() + opt.slice(1)}
+                          </button>
+                      ))}
+                    </div>
+                )}
+              </div>
+
+
+
+              <div className="relative">
+                <button
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e0ddd4] rounded-xl text-[13px] text-[#2d2d2d] hover:border-[#d97757] transition-all"
+                  onClick={() => setAspectDropdownOpen(!aspectDropdownOpen)}
+                >
+                  🖼️ {aspectRatio === "1:1"
+                    ? "Square (1:1)"
+                    : aspectRatio === "16:9"
+                      ? "Landscape (16:9)"
+                      : "Portrait (9:16)"}
+                  <svg
+                    className="w-4 h-4 text-[#6b6b6b] transition-colors"
+                    viewBox="0 0 20 20"
+                    fill="none"
+                  >
+                    <path d="M5 8l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                </button>
+
+                {/* Dropdown menu */}
+                {aspectDropdownOpen && (
+                  <div
+                    className="absolute bottom-full mb-2 bg-white border border-[#e0ddd4] rounded-xl shadow-lg w-48 z-50 animate-fadeIn"
+                  >
+                    {[
+                      { value: "1:1", label: "Square (1:1)" },
+                      { value: "16:9", label: "Landscape (16:9)" },
+                      { value: "9:16", label: "Portrait (9:16)" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => {
+                          setAspectRatio(opt.value);
+                          setAspectDropdownOpen(false); // close after selecting
+                        }}
+                        className={`block w-full text-left px-4 py-2 text-[13px] hover:bg-[#f7f5ef] transition-colors ${
+                          aspectRatio === opt.value ? "text-[#d97757] font-medium" : "text-[#2d2d2d]"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+
+
+            </div>
+            {/* Prompt Input */}
+            <div
+                className="bg-white border-2 border-[#e0ddd4] rounded-2xl shadow-sm focus-within:border-[#d97757] transition-colors flex items-center gap-2 px-4 py-3">
               <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    generateImage()
-                  }
-                }}
-                disabled={loading}
-                rows={1}
-                className="flex-1 outline-none text-[15px] text-[#2d2d2d] bg-transparent placeholder:text-[#999] resize-none max-h-[200px] overflow-y-auto"
-                placeholder="Describe the image you want to generate..."
-                style={{minHeight: '24px'}}
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      generateImage()
+                    }
+                  }}
+                  disabled={loading}
+                  rows={1}
+                  className="flex-1 outline-none text-[15px] text-[#2d2d2d] bg-transparent placeholder:text-[#999] resize-none max-h-[200px] overflow-y-auto"
+                  placeholder="Describe the image you want to generate..."
+                  style={{minHeight: '24px'}}
               />
 
-              <button onClick={generateImage} disabled={loading || !prompt.trim()} className="w-10 h-10 bg-[#d97757] hover:bg-[#c86545] text-white rounded-xl flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              <button onClick={generateImage} disabled={loading || !prompt.trim()}
+                      className="w-10 h-10 bg-[#d97757] hover:bg-[#c86545] text-white rounded-xl flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 {loading ? (
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                 ) : (

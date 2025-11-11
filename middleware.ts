@@ -51,10 +51,16 @@ export async function middleware(request: NextRequest) {
       userData.subscription_tier !== 'free' ||
       Number(userData.credits) > 0
 
-    if (!hasAccess && !request.nextUrl.pathname.startsWith('/auth/payment-required')) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/auth/payment-required'
-      return NextResponse.redirect(url)
+    if (!hasAccess) {
+      // Allow access to payment/pricing pages
+      const allowedPaths = ['/auth/payment-required', '/pricing', '/pricing/top-up', '/auth/redeem-coupon']
+      const isAllowedPath = allowedPaths.some(path => request.nextUrl.pathname.startsWith(path))
+
+      if (!isAllowedPath) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/auth/payment-required'
+        return NextResponse.redirect(url)
+      }
     }
   }
 }

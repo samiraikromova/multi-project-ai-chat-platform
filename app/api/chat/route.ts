@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
       .eq('id', userId)
       .single()
 
-    if (!user || Number(user.credits) <= 0) {
+    if (!user || Number(user.credits) < 0.001){
       return NextResponse.json(
         { error: 'Insufficient credits. Please top up or upgrade your plan.' },
         { status: 402 }

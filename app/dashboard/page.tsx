@@ -73,10 +73,9 @@ export default function DashboardPage() {
   const normalProjects = projects
   .filter((p) => p.name !== 'Coming Soon')
   .sort((a, b) => {
-    // "Cam's Brain V4" or slug "cb4" always first
-    if (a.slug === 'cb4') return -1
-    if (b.slug === 'cb4') return 1
-    return 0
+    if (a.slug === 'cb4' || a.name.toLowerCase().includes("cam's brain")) return -1
+    if (b.slug === 'cb4' || b.name.toLowerCase().includes("cam's brain")) return 1
+    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   })
   const comingSoonProjects = projects.filter((p) => p.name === 'Coming Soon')
 

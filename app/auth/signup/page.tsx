@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState("")
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
   const [loading, setLoading] = useState(false)
@@ -23,6 +24,7 @@ export default function SignupPage() {
       options: {
         data: {
           full_name: fullName,
+          phone: phone,
         },
       },
     })
@@ -76,11 +78,18 @@ export default function SignupPage() {
               Email
             </label>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-2 border border-[#e0ddd4] rounded-lg focus:outline-none focus:border-[#d97757]"
-              required
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-2 border border-[#e0ddd4] rounded-lg focus:outline-none focus:border-[#d97757]"
+                required
+            />
+            <input
+                type="tel"
+                placeholder="Phone Number"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className="w-full px-4 py-3 border border-[#e0ddd4] rounded-lg"
             />
           </div>
 
