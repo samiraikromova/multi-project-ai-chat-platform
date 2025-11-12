@@ -80,11 +80,23 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await n8nResponse.json();
-    const imageUrl = result.output || result.reply;
+    const output = result.output || result.reply;
 
-    if (!imageUrl) {
-      throw new Error('No image URL returned');
+    // Check if this is a text response (clarification) or image URL
+    const isImageUrl = typeof output === 'string' && output.startsWith('http');
+
+    if (!isImageUrl) {
+      // This is a text response (clarification needed)
+      return NextResponse.json({
+        success: true,
+        isTextResponse: true,
+        message: output,
+        cost: result.usage?.cost || 0
+      });
     }
+
+    // This is an image URL
+    const imageUrl = output;
 
     // Store in database
     const { data: savedImage } = await supabase
@@ -122,6 +134,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      isTextResponse: false,
       imageUrl,
       imageId: savedImage?.id,
       cost: actualCost,
