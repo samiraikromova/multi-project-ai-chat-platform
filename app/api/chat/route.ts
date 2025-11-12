@@ -44,9 +44,7 @@ export async function POST(req: NextRequest) {
 
     console.log('📨 Chat request:', { userId, projectSlug, model, hasThread: !!threadId })
 
-    // ========================================
-    // 1. CHECK USER CREDITS
-    // ========================================
+
     const { data: user } = await supabase
       .from('users')
       .select('credits, subscription_tier')
@@ -60,9 +58,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // ========================================
-    // 2. HANDLE THREAD CREATION/RETRIEVAL
-    // ========================================
+
     let currentThreadId = threadId
 
     if (!currentThreadId) {
@@ -87,9 +83,7 @@ export async function POST(req: NextRequest) {
       console.log('✅ New thread created:', currentThreadId)
     }
 
-    // ========================================
-    // 3. FETCH CONVERSATION HISTORY (Last 20 messages)
-    // ========================================
+
     const { data: history } = await supabase
       .from('messages')
       .select('role, content')
@@ -104,9 +98,7 @@ export async function POST(req: NextRequest) {
 
     console.log(`📚 Loaded ${conversationHistory.length} previous messages`)
 
-    // ========================================
-    // 4. SAVE USER MESSAGE
-    // ========================================
+
     const { data: userMessage, error: userMsgError } = await supabase
       .from('messages')
       .insert({
@@ -123,9 +115,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to save message' }, { status: 500 })
     }
 
-    // ========================================
-    // 5. CALL N8N WEBHOOK
-    // ========================================
+
     const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL || 'https://n8n.leveragedcreator.ai/webhook/cb4-chat'
 
     const n8nPayload = {
@@ -159,9 +149,7 @@ export async function POST(req: NextRequest) {
 
     console.log('✅ AI response received')
 
-    // ========================================
-    // 6. ESTIMATE TOKEN USAGE & CALCULATE COST
-    // ========================================
+
     const inputTokens = estimateTokens(
       systemPrompt +
       conversationHistory.map((m) => m.content).join('\n') +
@@ -173,9 +161,7 @@ export async function POST(req: NextRequest) {
 
     console.log(`💰 Tokens: ${inputTokens} in, ${outputTokens} out | Cost: $${cost.toFixed(6)}`)
 
-    // ========================================
-    // 7. DEDUCT CREDITS
-    // ========================================
+
     const newCredits = Number(user.credits) - cost
 
     const { error: creditError } = await supabase
@@ -190,9 +176,7 @@ export async function POST(req: NextRequest) {
       console.error('Failed to deduct credits:', creditError)
     }
 
-    // ========================================
-    // 8. LOG USAGE
-    // ========================================
+
     await supabase.from('usage_logs').insert({
       user_id: userId,
       model: model,
@@ -202,9 +186,7 @@ export async function POST(req: NextRequest) {
       project_id: projectId,
     })
 
-    // ========================================
-    // 9. SAVE AI MESSAGE
-    // ========================================
+
     const { data: assistantMessage } = await supabase
       .from('messages')
       .insert({
@@ -217,9 +199,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    // ========================================
-    // 10. RETURN RESPONSE
-    // ========================================
+
     return NextResponse.json({
       success: true,
       reply: aiReply,

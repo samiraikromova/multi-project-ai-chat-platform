@@ -79,7 +79,6 @@ export default function DashboardPage() {
   })
   const comingSoonProjects = projects.filter((p) => p.name === 'Coming Soon')
 
-
   return (
     <div className="min-h-screen bg-[#f7f5ef]">
       {/* Header */}

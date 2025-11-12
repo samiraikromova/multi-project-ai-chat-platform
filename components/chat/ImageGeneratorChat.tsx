@@ -1,93 +1,130 @@
-// components/chat/ImageGeneratorChat.tsx
-"use client"
+'use client'
 
-import { useState, useEffect, useRef } from "react"
-import { createClient } from "@/lib/supabase/client"
-import { useRouter } from "next/navigation"
-import CreditBalance from "@/components/CreditBalance"
+import { useState, useEffect, useRef } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import Image from 'next/image'
 
-interface ImageGenProps {
+interface ImageGeneratorChatProps {
   userId: string
   projectId: string
   projectSlug: string
-  projectName: string
-  projectEmoji: string
-  systemPrompt: string
-  _projectColor: string
 }
 
 interface GeneratedImage {
   id: string
-  url: string
   prompt: string
+  image_url: string
+  style: string
+  aspect_ratio: string
   created_at: string
 }
 
-export default function ImageGeneratorChat(props: ImageGenProps) {
-  const [prompt, setPrompt] = useState("")
-  const [style, setStyle] = useState('realistic')
-  const [aspectRatio, setAspectRatio] = useState('1:1')
+export default function ImageGeneratorChat({ userId, projectId, projectSlug }: ImageGeneratorChatProps) {
+  const [prompt, setPrompt] = useState('')
   const [loading, setLoading] = useState(false)
   const [images, setImages] = useState<GeneratedImage[]>([])
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [userDropdownOpen, setUserDropdownOpen] = useState(false)
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [aspectDropdownOpen, setAspectDropdownOpen] = useState(false);
-  const [styleDropdownOpen, setStyleDropdownOpen] = useState(false)
-  const [userName, setUserName] = useState<string | null>(null)
-  const [userEmail, setUserEmail] = useState<string | null>(null)
-
+  const [credits, setCredits] = useState<number>(0)
+  const [quality, setQuality] = useState('BALANCED')
+  const [model, setModel] = useState('Ideogram')
+  const [numImages, setNumImages] = useState(1)
+  const [imageSize, setImageSize] = useState('landscape_16_9')
+  const [qualityDropdownOpen, setQualityDropdownOpen] = useState(false)
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false)
+  const [numImagesDropdownOpen, setNumImagesDropdownOpen] = useState(false)
+  const [sizeDropdownOpen, setSizeDropdownOpen] = useState(false)
+  const [selectedImage, setSelectedImage] = useState<GeneratedImage | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const supabase = createClient()
-  const router = useRouter()
-  const userDropdownRef = useRef<HTMLDivElement>(null)
 
+  // Load user credits
   useEffect(() => {
-    const fetchUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        setUserName(user.user_metadata?.full_name || user.user_metadata?.name || null)
-        setUserEmail(user.email || null)
-      }
-    }
-    fetchUser()
-  }, [])
+    loadCredits()
+  }, [userId])
 
+  // Load generated images on mount
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) {
-        setUserDropdownOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
-    useEffect(() => {
     loadImages()
-  }, [])
+  }, [projectId])
 
-  async function loadImages() {
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px'
+    }
+  }, [prompt])
+
+  // Real-time subscription for new images
+  useEffect(() => {
+    const channel = supabase
+      .channel('generated-images-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'generated_images',
+          filter: `project_id=eq.${projectId}`
+        },
+        (payload) => {
+          setImages(prev => [payload.new as GeneratedImage, ...prev])
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [projectId, supabase])
+
+  // Real-time subscription for credit updates
+  useEffect(() => {
+    const channel = supabase
+      .channel('user-credits-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'users',
+          filter: `id=eq.${userId}`
+        },
+        (payload) => {
+          if (payload.new && 'credits' in payload.new) {
+            setCredits(Number(payload.new.credits))
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [userId, supabase])
+
+  const loadCredits = async () => {
     const { data } = await supabase
-      .from('generated_images')
-      .select('*')
-      .eq('user_id', props.userId)
-      .eq('project_id', props.projectId)
-      .order('created_at', { ascending: false })
-      .limit(20)
-
+      .from('users')
+      .select('credits')
+      .eq('id', userId)
+      .single()
+    
     if (data) {
-      setImages(data.map(img => ({
-        id: img.id,
-        url: img.image_url,
-        prompt: img.prompt,
-        created_at: img.created_at
-      })))
+      setCredits(Number(data.credits))
     }
   }
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/auth/login')
+  const loadImages = async () => {
+    const { data } = await supabase
+      .from('generated_images')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
+      .limit(50)
+
+    if (data) {
+      setImages(data)
+    }
   }
 
   const generateImage = async () => {
@@ -96,300 +133,358 @@ export default function ImageGeneratorChat(props: ImageGenProps) {
     setLoading(true)
 
     try {
-      // Call your image generation N8N webhook
       const response = await fetch('/api/generate-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt,
-          style,
-          aspectRatio,
-          userId: props.userId,
-          projectId: props.projectId
+          message: prompt,
+          userId,
+          projectId,
+          projectSlug,
+          model,
+          quality,
+          numImages,
+          imageSize
         })
       })
 
       const data = await response.json()
 
+      if (!response.ok) {
+        throw new Error(data.error || 'Generation failed')
+      }
+
       if (data.success && data.imageUrl) {
-        const newImage: GeneratedImage = {
-          id: Date.now().toString(),
-          url: data.imageUrl,
-          prompt: prompt,
-          created_at: new Date().toISOString()
-        }
-        setImages([newImage, ...images])
+        // Images will be added via real-time subscription
         setPrompt("")
+        // Optionally show success message
       } else {
         alert('Image generation failed: ' + (data.error || 'Unknown error'))
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Image generation error:', error)
-      alert('Failed to generate image')
+      alert(error.message || 'Failed to generate image')
     } finally {
       setLoading(false)
     }
   }
 
-  const downloadImage = async (url: string, prompt: string) => {
-    const response = await fetch(url)
-    const blob = await response.blob()
-    const blobUrl = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = blobUrl
-    a.download = `${prompt.substring(0, 30)}.png`
-    a.click()
-    URL.revokeObjectURL(blobUrl)
+  const downloadImage = async (imageUrl: string, filename: string) => {
+    try {
+      const response = await fetch(imageUrl)
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error('Download failed:', error)
+      alert('Failed to download image')
+    }
+  }
+
+  const deleteImage = async (imageId: string) => {
+    if (!confirm('Delete this image?')) return
+
+    const { error } = await supabase
+      .from('generated_images')
+      .delete()
+      .eq('id', imageId)
+
+    if (!error) {
+      setImages(prev => prev.filter(img => img.id !== imageId))
+      if (selectedImage?.id === imageId) {
+        setSelectedImage(null)
+      }
+    }
+  }
+
+  const calculateCost = () => {
+    const pricing: Record<string, Record<string, number>> = {
+      'Ideogram': { 'TURBO': 0.03, 'BALANCED': 0.06, 'QUALITY': 0.09 },
+      'Flux': { 'flux-1': 0.025, 'flux-1.1-pro': 0.04, 'flux-1.1-pro-ultra': 0.06 }
+    }
+    const cost = pricing[model]?.[quality] || 0.06
+    return (cost * numImages).toFixed(3)
   }
 
   return (
-    <div className="flex h-screen bg-[#f7f5ef]">
-      {/* Sidebar */}
-      <aside className={`${sidebarOpen ? 'w-[260px]' : 'w-[60px]'} bg-[#f7f5ef] border-r border-[#e0ddd4] flex flex-col transition-all duration-300 flex-shrink-0`}>
-        {!sidebarOpen && (
-          <div className="flex flex-col h-full items-center py-3 gap-2">
-            <button onClick={() => setSidebarOpen(true)} className="w-10 h-10 rounded-lg hover:bg-[#e8e6df] transition-colors flex items-center justify-center text-[#6b6b6b]">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
-                <line x1="8" y1="4" x2="8" y2="16" stroke="currentColor" strokeWidth="1.5"/>
-              </svg>
-            </button>
+    <div className="flex h-screen bg-[#faf9f6]">
+      {/* Sidebar - Recently Generated */}
+      <div className="w-80 border-r border-[#e0ddd4] bg-white overflow-y-auto">
+        <div className="p-6 border-b border-[#e0ddd4]">
+          <h2 className="text-lg font-semibold text-[#2d2d2d]">Recently Generated</h2>
+          <p className="text-sm text-[#8b8b8b] mt-1">{images.length} images</p>
+        </div>
+        
+        <div className="p-4 space-y-3">
+          {images.map((image) => (
+              <div
+                  key={image.id}
+                  onClick={() => setSelectedImage(image)}
+                  className={`group relative cursor-pointer rounded-xl overflow-hidden transition-all ${
+                      selectedImage?.id === image.id
+                          ? 'ring-2 ring-[#d97757]'
+                          : 'hover:ring-2 hover:ring-[#e0ddd4]'
+                  }`}
+              >
+                <div className="aspect-video relative bg-[#f7f5ef]">
+                  {image.image_url?.startsWith('http') ? (
+                      <Image
+                          src={image.image_url}
+                          alt={image.prompt}
+                          fill
+                          className="object-cover"
+                      />
+                  ) : (
+                      <div className="flex items-center justify-center h-full text-gray-500">
+                        <p>Invalid image URL</p>
+                      </div>
+                  )}
+                </div>
+                <div className="p-3 bg-white">
+                  <p className="text-xs text-[#2d2d2d] line-clamp-2 mb-1">
+                    {image.prompt}
+                  </p>
+                  <div className="flex items-center justify-between text-[10px] text-[#8b8b8b]">
+                    <span>{image.style} • {image.aspect_ratio}</span>
+                    <span>{new Date(image.created_at).toLocaleDateString()}</span>
+                  </div>
+                </div>
 
-            <button onClick={() => router.push('/dashboard')} className="w-10 h-10 rounded-lg hover:bg-[#e8e6df] transition-colors flex items-center justify-center text-[#6b6b6b]">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <rect x="3" y="3" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/>
-                <rect x="11" y="3" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/>
-                <rect x="3" y="11" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/>
-                <rect x="11" y="11" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/>
-              </svg>
-            </button>
-
-            <div className="flex-1"></div>
-
-            <div className="relative" ref={userDropdownRef}>
-              <button onClick={() => setUserDropdownOpen(!userDropdownOpen)} className="w-10 h-10 rounded-full flex items-center justify-center text-white text-[13px] font-medium hover:opacity-80 transition-opacity" style={{ backgroundColor: '#d97757' }}>
-                {userName ? userName.charAt(0).toUpperCase() : (userEmail?.charAt(0).toUpperCase() || 'U')}
-              </button>
-              {userDropdownOpen && (
-                <div className="absolute bottom-full left-12 mb-2 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 w-48 z-50">
-                  <button onClick={() => router.push('/pricing')} className="w-full text-left px-4 py-2 text-[14px] text-[#2d2d2d] hover:bg-[#dcdcdc] transition-colors">
-                    Upgrade to Pro
+                {/* Hover Actions */}
+                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                  <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        downloadImage(image.image_url, `${image.id}.png`)
+                      }}
+                      className="p-2 bg-white/90 backdrop-blur-sm rounded-lg hover:bg-white transition-colors"
+                      title="Download"
+                  >
+                    <svg className="w-4 h-4 text-[#2d2d2d]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
                   </button>
-                  <button onClick={handleLogout} className="w-full px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors">
-                    Logout
+                  <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        deleteImage(image.id)
+                      }}
+                      className="p-2 bg-white/90 backdrop-blur-sm rounded-lg hover:bg-red-50 transition-colors"
+                      title="Delete"
+                  >
+                    <svg className="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
                   </button>
                 </div>
-              )}
+              </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="border-b border-[#e0ddd4] bg-white px-8 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-semibold text-[#2d2d2d]">Image Ad Generator</h1>
+              <p className="text-sm text-[#8b8b8b] mt-1">Create stunning advertising images with AI</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="px-4 py-2 bg-[#f7f5ef] rounded-xl">
+                <span className="text-sm text-[#2d2d2d] font-medium">{credits.toFixed(2)} credits</span>
+              </div>
             </div>
           </div>
-        )}
+        </div>
 
-        {sidebarOpen && (
-          <>
-            <div className="p-3 border-b border-[#e0ddd4] flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">{props.projectEmoji}</span>
-                <h2 className="text-[15px] font-semibold text-[#2d2d2d]">{props.projectName}</h2>
-              </div>
-              <button onClick={() => setSidebarOpen(false)} className="p-1.5 hover:bg-[#e8e6df] rounded-lg transition-colors">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
-                  <rect x="3" y="4" width="14" height="12" rx="1.5" strokeWidth="1.5"/>
-                  <line x1="12" y1="4" x2="12" y2="16" strokeWidth="1.5"/>
-                </svg>
-              </button>
-            </div>
-
-            <div className="p-3 space-y-2">
-              <button onClick={() => router.push('/dashboard')} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors text-[13px] text-[#6b6b6b]">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M14 8H2M6 4l-4 4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                All Projects
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-2">
-              <div className="text-[11px] text-[#8b8b8b] px-3 py-2 font-medium">RECENT GENERATIONS</div>
-              {images.slice(0, 10).map(img => (
-                <div key={img.id} className="mb-2 px-2">
-                  <img src={img.url} alt={img.prompt} className="w-full rounded-lg border border-[#e0ddd4] hover:border-[#d97757] transition-colors cursor-pointer" onClick={() => window.open(img.url, '_blank')} />
-                  <p className="text-[11px] text-[#6b6b6b] mt-1 truncate">{img.prompt}</p>
+        {/* Preview Area */}
+        <div className="flex-1 overflow-y-auto p-8">
+          {selectedImage ? (
+            <div className="max-w-5xl mx-auto">
+              <div className="bg-white rounded-2xl shadow-sm border border-[#e0ddd4] overflow-hidden">
+                <div className="relative bg-[#f7f5ef]" style={{ aspectRatio: '16/9' }}>
+                  <Image
+                    src={selectedImage.image_url}
+                    alt={selectedImage.prompt}
+                    fill
+                    className="object-contain"
+                  />
                 </div>
-              ))}
-            </div>
-
-            <div className="border-t border-[#e0ddd4] p-3">
-              <div className="relative" ref={userDropdownRef}>
-                <button onClick={() => setUserDropdownOpen(!userDropdownOpen)} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[13px] font-medium flex-shrink-0" style={{backgroundColor: '#d97757'}}>
-                    {userName ? userName.charAt(0).toUpperCase() : (userEmail?.charAt(0).toUpperCase() || 'U')}
-                  </div>
-                  <div className="flex-1 text-left min-w-0">
-                    <div className="text-[13px] text-[#2d2d2d] truncate font-medium">{userName || userEmail || 'User'}</div>
-                  </div>
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="flex-shrink-0">
-                    <path d="M6 8L3 5h6L6 8z"/>
-                  </svg>
-                </button>
-                {userDropdownOpen && (
-                  <div className="absolute bottom-full left-0 mb-2 w-full bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1">
-                    <div className="px-3 py-2 border-b border-[#e0ddd4]">
-                      <div className="text-[13px] text-[#2d2d2d] font-medium truncate">{userName || 'User'}</div>
-                      <div className="text-[11px] text-[#8b8b8b] truncate">{userEmail}</div>
+                <div className="p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1">
+                      <h3 className="text-lg font-semibold text-[#2d2d2d] mb-2">Prompt</h3>
+                      <p className="text-sm text-[#5f5f5f] leading-relaxed">{selectedImage.prompt}</p>
                     </div>
-                    <button onClick={() => router.push('/pricing')} className="w-full text-left px-4 py-2 text-[14px] text-[#2d2d2d] hover:bg-[#dcdcdc] transition-colors">
-                      Upgrade to Pro
-                    </button>
-                    <button onClick={handleLogout} className="w-full px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors">
-                      Logout
-                    </button>
                   </div>
-                )}
-              </div>
-            </div>
-          </>
-        )}
-      </aside>
-
-      {/* Main Area */}
-      <main className="flex-1 flex flex-col min-w-0">
-        <header className="bg-[#f7f5ef] border-b border-[#e0ddd4] px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <span className="text-xl">{props.projectEmoji}</span>
-            <h2 className="text-[15px] font-medium text-[#2d2d2d]">{props.projectName}</h2>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-white border border-[#e0ddd4] rounded-lg">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="#d97757">
-                <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" fill="none"/>
-                <text x="8" y="11" fontSize="8" textAnchor="middle" fill="currentColor">$</text>
-              </svg>
-              <CreditBalance userId={props.userId}/>
-            </div>
-          </div>
-        </header>
-
-
-        {/* Image Gallery */}
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-[1200px] mx-auto">
-            {images.length === 0 && !loading && (
-              <div className="text-center py-16">
-                <div className="w-16 h-16 rounded-2xl mx-auto mb-6 flex items-center justify-center text-3xl">{props.projectEmoji}</div>
-                <h3 className="text-[24px] font-normal text-[#2d2d2d] mb-2">Generate Your First Image</h3>
-                <p className="text-[15px] text-[#6b6b6b]">Describe what you want to see and AI will create it</p>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {images.map(img => (
-                <div key={img.id} className="bg-white border border-[#e0ddd4] rounded-lg overflow-hidden hover:border-[#d97757] transition-all">
-                  <img src={img.url} alt={img.prompt} className="w-full aspect-square object-cover" />
-                  <div className="p-4">
-                    <p className="text-[14px] text-[#2d2d2d] mb-3">{img.prompt}</p>
+                  <div className="flex items-center justify-between pt-4 border-t border-[#e0ddd4]">
+                    <div className="flex gap-6 text-xs text-[#8b8b8b]">
+                      <div>
+                        <span className="font-medium">Model:</span> {selectedImage.style}
+                      </div>
+                      <div>
+                        <span className="font-medium">Size:</span> {selectedImage.aspect_ratio}
+                      </div>
+                      <div>
+                        <span className="font-medium">Created:</span> {new Date(selectedImage.created_at).toLocaleString()}
+                      </div>
+                    </div>
                     <div className="flex gap-2">
-                      <button onClick={() => window.open(img.url, '_blank')} className="px-3 py-2 border border-[#e0ddd4] hover:bg-[#f5f5f5] rounded-lg text-[13px] transition-colors">
-                        View
+                      <button
+                        onClick={() => downloadImage(selectedImage.image_url, `${selectedImage.id}.png`)}
+                        className="px-4 py-2 bg-[#2d2d2d] text-white rounded-xl hover:bg-[#1a1a1a] transition-colors text-sm font-medium"
+                      >
+                        Download
+                      </button>
+                      <button
+                        onClick={() => deleteImage(selectedImage.id)}
+                        className="px-4 py-2 border border-[#e0ddd4] text-[#2d2d2d] rounded-xl hover:border-red-300 hover:text-red-600 transition-colors text-sm font-medium"
+                      >
+                        Delete
                       </button>
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
-
-            {loading && (
-              <div className="flex justify-center py-12">
-                <div className="text-center">
-                  <div className="w-16 h-16 border-4 border-[#d97757] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                  <p className="text-[15px] text-[#6b6b6b]">Generating your image...</p>
-                </div>
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center">
+                <div className="w-24 h-24 mx-auto mb-6 rounded-2xl bg-[#f7f5ef] flex items-center justify-center">
+                  <svg className="w-12 h-12 text-[#d97757]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-semibold text-[#2d2d2d] mb-2">No image selected</h3>
+                <p className="text-[#8b8b8b]">Select an image from the sidebar or generate a new one</p>
+              </div>
+            </div>
+          )}
         </div>
 
-
-        <div className="border-t border-[#e0ddd4] bg-[#f7f5ef] p-6">
-          <div className="max-w-[800px] mx-auto">
-            {/* Style & Aspect Controls */}
-            <div className="flex gap-3 mb-3">
-              <div className="relative">
-                <button
-                    className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e0ddd4] rounded-xl text-[13px] text-[#2d2d2d] hover:border-[#d97757] transition-all"
-                    onClick={() => setStyleDropdownOpen(!styleDropdownOpen)}
-                >
-                  🎨 {style.charAt(0).toUpperCase() + style.slice(1)}
-                  <svg
-                      className="w-4 h-4 text-[#6b6b6b] transition-colors"
-                      viewBox="0 0 20 20"
-                      fill="none"
-                  >
-                    <path d="M5 8l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                  </svg>
-                </button>
-
-                {/* Dropdown menu */}
-                {styleDropdownOpen && (
-                    <div
-                        className="absolute bottom-full mb-2 bg-white border border-[#e0ddd4] rounded-xl shadow-lg w-44 z-50 animate-fadeIn"
-                        onMouseLeave={() => setStyleDropdownOpen(false)} // optional: close when leaving dropdown
-                    >
-                      {["realistic", "artistic", "cartoon", "3d", "anime"].map((opt) => (
-                          <button
-                              key={opt}
-                              onClick={() => {
-                                setStyle(opt)
-                                setStyleDropdownOpen(false) // close after selecting
-                              }}
-                              className={`block w-full text-left px-4 py-2 text-[13px] hover:bg-[#f7f5ef] transition-colors ${
-                                  style === opt ? "text-[#d97757] font-medium" : "text-[#2d2d2d]"
-                              }`}
-                          >
-                            {opt.charAt(0).toUpperCase() + opt.slice(1)}
-                          </button>
-                      ))}
-                    </div>
-                )}
-              </div>
-
+        {/* Input Area */}
+        <div className="border-t border-[#e0ddd4] bg-white p-6">
+          <div className="max-w-5xl mx-auto">
+            {/* Controls Row */}
+            <div className="flex gap-3 mb-3 flex-wrap">
+              {/* Model Selector */}
               <div className="relative">
                 <button
                   className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e0ddd4] rounded-xl text-[13px] text-[#2d2d2d] hover:border-[#d97757] transition-all"
-                  onClick={() => setAspectDropdownOpen(!aspectDropdownOpen)}
+                  onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
                 >
-                  🖼️ {aspectRatio === "1:1"
-                    ? "Square (1:1)"
-                    : aspectRatio === "16:9"
-                      ? "Landscape (16:9)"
-                      : "Portrait (9:16)"}
-                  <svg
-                    className="w-4 h-4 text-[#6b6b6b] transition-colors"
-                    viewBox="0 0 20 20"
-                    fill="none"
-                  >
+                  🎨 {model}
+                  <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none">
                     <path d="M5 8l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                   </svg>
                 </button>
+                {modelDropdownOpen && (
+                  <div className="absolute bottom-full mb-2 bg-white border border-[#e0ddd4] rounded-xl shadow-lg w-44 z-50">
+                    {["Ideogram", "Flux"].map((opt) => (
+                      <button
+                        key={opt}
+                        onClick={() => { setModel(opt); setModelDropdownOpen(false); }}
+                        className={`block w-full text-left px-4 py-2 text-[13px] hover:bg-[#f7f5ef] first:rounded-t-xl last:rounded-b-xl ${model === opt ? "text-[#d97757] font-medium" : ""}`}
+                      >
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-                {/* Dropdown menu */}
-                {aspectDropdownOpen && (
-                  <div
-                    className="absolute bottom-full mb-2 bg-white border border-[#e0ddd4] rounded-xl shadow-lg w-48 z-50 animate-fadeIn"
-                  >
+              {/* Quality Selector */}
+              <div className="relative">
+                <button
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e0ddd4] rounded-xl text-[13px] text-[#2d2d2d] hover:border-[#d97757] transition-all"
+                  onClick={() => setQualityDropdownOpen(!qualityDropdownOpen)}
+                >
+                  ⚡ {quality === 'TURBO' ? 'Fast' : quality === 'BALANCED' ? 'Balanced' : 'Quality'}
+                  <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none">
+                    <path d="M5 8l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                </button>
+                {qualityDropdownOpen && (
+                  <div className="absolute bottom-full mb-2 bg-white border border-[#e0ddd4] rounded-xl shadow-lg w-52 z-50">
                     {[
-                      { value: "1:1", label: "Square (1:1)" },
-                      { value: "16:9", label: "Landscape (16:9)" },
-                      { value: "9:16", label: "Portrait (9:16)" },
+                      { value: 'TURBO', label: 'Fast (Cheapest)', cost: model === 'Ideogram' ? '$0.03' : '$0.025' },
+                      { value: 'BALANCED', label: 'Balanced', cost: model === 'Ideogram' ? '$0.06' : '$0.04' },
+                      { value: 'QUALITY', label: 'Quality (Best)', cost: model === 'Ideogram' ? '$0.09' : '$0.06' }
                     ].map((opt) => (
                       <button
                         key={opt.value}
-                        onClick={() => {
-                          setAspectRatio(opt.value);
-                          setAspectDropdownOpen(false); // close after selecting
-                        }}
-                        className={`block w-full text-left px-4 py-2 text-[13px] hover:bg-[#f7f5ef] transition-colors ${
-                          aspectRatio === opt.value ? "text-[#d97757] font-medium" : "text-[#2d2d2d]"
-                        }`}
+                        onClick={() => { setQuality(opt.value); setQualityDropdownOpen(false); }}
+                        className={`block w-full text-left px-4 py-2 text-[13px] hover:bg-[#f7f5ef] first:rounded-t-xl last:rounded-b-xl ${quality === opt.value ? "text-[#d97757] font-medium" : ""}`}
+                      >
+                        <div>{opt.label}</div>
+                        <div className="text-[11px] text-[#8b8b8b]">{opt.cost}/image</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Number of Images */}
+              <div className="relative">
+                <button
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e0ddd4] rounded-xl text-[13px] text-[#2d2d2d] hover:border-[#d97757] transition-all"
+                  onClick={() => setNumImagesDropdownOpen(!numImagesDropdownOpen)}
+                >
+                  📸 {numImages} {numImages === 1 ? 'Image' : 'Images'}
+                  <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none">
+                    <path d="M5 8l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                </button>
+                {numImagesDropdownOpen && (
+                  <div className="absolute bottom-full mb-2 bg-white border border-[#e0ddd4] rounded-xl shadow-lg w-32 z-50">
+                    {[1, 2, 3, 4].map((num) => (
+                      <button
+                        key={num}
+                        onClick={() => { setNumImages(num); setNumImagesDropdownOpen(false); }}
+                        className={`block w-full text-left px-4 py-2 text-[13px] hover:bg-[#f7f5ef] first:rounded-t-xl last:rounded-b-xl ${numImages === num ? "text-[#d97757] font-medium" : ""}`}
+                      >
+                        {num} {num === 1 ? 'Image' : 'Images'}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Size Selector */}
+              <div className="relative">
+                <button
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e0ddd4] rounded-xl text-[13px] text-[#2d2d2d] hover:border-[#d97757] transition-all"
+                  onClick={() => setSizeDropdownOpen(!sizeDropdownOpen)}
+                >
+                  🖼️ {imageSize.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none">
+                    <path d="M5 8l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                </button>
+                {sizeDropdownOpen && (
+                  <div className="absolute bottom-full mb-2 bg-white border border-[#e0ddd4] rounded-xl shadow-lg w-52 z-50 max-h-64 overflow-y-auto">
+                    {[
+                      { value: 'square_hd', label: 'Square HD (1:1)' },
+                      { value: 'portrait_16_9', label: 'Portrait (9:16)' },
+                      { value: 'landscape_16_9', label: 'Landscape (16:9)' },
+                      { value: 'landscape_21_9', label: 'Ultra Wide (21:9)' },
+                      { value: 'landscape_4_3', label: 'Landscape (4:3)' },
+                      { value: 'portrait_4_3', label: 'Portrait (3:4)' }
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => { setImageSize(opt.value); setSizeDropdownOpen(false); }}
+                        className={`block w-full text-left px-4 py-2 text-[13px] hover:bg-[#f7f5ef] first:rounded-t-xl last:rounded-b-xl ${imageSize === opt.value ? "text-[#d97757] font-medium" : ""}`}
                       >
                         {opt.label}
                       </button>
@@ -398,42 +493,54 @@ export default function ImageGeneratorChat(props: ImageGenProps) {
                 )}
               </div>
 
-
-
+              {/* Cost Indicator */}
+              <div className="ml-auto flex items-center gap-2 px-4 py-2 bg-[#f7f5ef] rounded-xl">
+                <span className="text-[13px] text-[#8b8b8b]">Cost:</span>
+                <span className="text-[13px] font-semibold text-[#d97757]">${calculateCost()}</span>
+              </div>
             </div>
+
             {/* Prompt Input */}
-            <div
-                className="bg-white border-2 border-[#e0ddd4] rounded-2xl shadow-sm focus-within:border-[#d97757] transition-colors flex items-center gap-2 px-4 py-3">
+            <div className="bg-white border-2 border-[#e0ddd4] rounded-2xl shadow-sm focus-within:border-[#d97757] transition-colors flex items-end gap-3 px-4 py-3">
               <textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      generateImage()
-                    }
-                  }}
-                  disabled={loading}
-                  rows={1}
-                  className="flex-1 outline-none text-[15px] text-[#2d2d2d] bg-transparent placeholder:text-[#999] resize-none max-h-[200px] overflow-y-auto"
-                  placeholder="Describe the image you want to generate..."
-                  style={{minHeight: '24px'}}
+                ref={textareaRef}
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    generateImage()
+                  }
+                }}
+                disabled={loading}
+                rows={1}
+                className="flex-1 outline-none text-[15px] text-[#2d2d2d] bg-transparent placeholder:text-[#999] resize-none max-h-[200px] overflow-y-auto"
+                placeholder="Describe the advertising image you want to create..."
+                style={{ minHeight: '24px' }}
               />
 
-              <button onClick={generateImage} disabled={loading || !prompt.trim()}
-                      className="w-10 h-10 bg-[#d97757] hover:bg-[#c86545] text-white rounded-xl flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              <button
+                onClick={generateImage}
+                disabled={loading || !prompt.trim()}
+                className="w-10 h-10 bg-[#d97757] hover:bg-[#c86545] text-white rounded-xl flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+              >
                 {loading ? (
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                 ) : (
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                    <path d="M10 15V5M5 10l5-5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M10 4v12m6-6H4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 )}
               </button>
             </div>
+
+            {/* Info Text */}
+            <p className="text-xs text-[#8b8b8b] mt-2 text-center">
+              Press Enter to generate • Shift+Enter for new line
+            </p>
           </div>
         </div>
-      </main>
+      </div>
     </div>
   )
 }

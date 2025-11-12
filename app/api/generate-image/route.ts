@@ -1,19 +1,41 @@
-// app/api/generate-image/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+function calculateImageCost(model: string, quality: string, numImages: number): number {
+  const pricing: Record<string, Record<string, number>> = {
+    'Ideogram': {
+      'TURBO': 0.03,
+      'BALANCED': 0.06,
+      'QUALITY': 0.09
+    },
+    'Flux': {
+      'flux-1': 0.025,
+      'flux-1.1-pro': 0.04,
+      'flux-1.1-pro-ultra': 0.06
+    }
+  };
+
+  const cost = pricing[model]?.[quality] || 0.06;
+  return cost * numImages;
+}
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, style, aspectRatio, userId, projectId } = await req.json();
-    const IMAGE_COST = 0.04;
+    const {
+      message,
+      userId,
+      projectId,
+      projectSlug,
+      model,
+      quality,
+      numImages,
+      imageSize
+    } = await req.json();
 
     // Check credits
     const { data: user } = await supabase
@@ -22,61 +44,87 @@ export async function POST(req: NextRequest) {
       .eq("id", userId)
       .single();
 
-    if (!user || Number(user.credits) < IMAGE_COST) {
-      return NextResponse.json({ error: "Insufficient credits" }, { status: 402 });
+    const estimatedCost = calculateImageCost(model, quality, numImages);
+
+    if (!user || Number(user.credits) < estimatedCost) {
+      return NextResponse.json(
+        { error: "Insufficient credits" },
+        { status: 402 }
+      );
     }
 
-    const sizeMap: Record<string, string> = {
-      "1:1": "1024x1024",
-      "16:9": "1792x1024",
-      "9:16": "1024x1792",
+    // Call n8n webhook
+    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL || 'https://n8n.leveragedcreator.ai/webhook/cb4-chat';
+
+    const n8nPayload = {
+      message,
+      userId,
+      projectId,
+      projectSlug,
+      model,
+      quality,
+      numImages,
+      imageSize,
+      userMessage: message,
+      messageContent: message
     };
-    const size = sizeMap[aspectRatio] || "1024x1024";
 
-    // Call Gemini 2.5 Flash Image
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-image" });
-    const response = await model.generateContent([
-      { text: `${style} style: ${prompt}` },
-    ]);
-
-    const candidate = response.response?.candidates?.[0];
-    const part = candidate?.content?.parts?.find((p: any) => p.inlineData);
-
-    if (!part?.inlineData?.data) {
-      throw new Error("No image returned from Gemini");
-    }
-
-    const imageUrl = `data:image/png;base64,${part.inlineData.data}`;
-
-    // Store in DB
-    await supabase.from("generated_images").insert({
-      user_id: userId,
-      project_id: projectId,
-      prompt,
-      image_url: imageUrl,
-      style,
-      aspect_ratio: aspectRatio,
+    const n8nResponse = await fetch(n8nWebhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(n8nPayload),
     });
 
+    if (!n8nResponse.ok) {
+      throw new Error('N8N webhook failed');
+    }
+
+    const result = await n8nResponse.json();
+    const imageUrl = result.output || result.reply;
+
+    if (!imageUrl) {
+      throw new Error('No image URL returned');
+    }
+
+    // Store in database
+    const { data: savedImage } = await supabase
+      .from("generated_images")
+      .insert({
+        user_id: userId,
+        project_id: projectId,
+        prompt: message,
+        image_url: imageUrl,
+        style: model,
+        aspect_ratio: imageSize,
+      })
+      .select()
+      .single();
+
     // Deduct credits
-    const newCredits = Number(user.credits) - IMAGE_COST;
-    await supabase.from("users").update({ credits: newCredits }).eq("id", userId);
+    const actualCost = result.usage?.cost || estimatedCost;
+    const newCredits = Number(user.credits) - actualCost;
+
+    await supabase
+      .from("users")
+      .update({ credits: newCredits })
+      .eq("id", userId);
 
     // Log usage
     await supabase.from("usage_logs").insert({
       user_id: userId,
-      model: "Gemini 2.5 Flash Image",
+      model: `${model} - ${quality}`,
       tokens_input: 0,
       tokens_output: 0,
-      estimated_cost: IMAGE_COST,
+      estimated_cost: actualCost,
       project_id: projectId,
-      metadata: { type: "image_generation", style, aspectRatio },
+      metadata: { type: "image_generation", quality, numImages, imageSize },
     });
 
     return NextResponse.json({
       success: true,
       imageUrl,
-      cost: IMAGE_COST,
+      imageId: savedImage?.id,
+      cost: actualCost,
       remainingCredits: newCredits,
     });
   } catch (error: any) {
