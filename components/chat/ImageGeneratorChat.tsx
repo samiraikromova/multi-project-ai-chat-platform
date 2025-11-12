@@ -285,7 +285,7 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
             <div className="flex-1"></div>
 
             <div className="relative" ref={userDropdownRef}>
-              <button onClick={() => setUserDropdownOpen(!userDropdownOpen)} className="w-10 h-10 rounded-full flex items-center justify-center text-white text-[13px] font-medium hover:opacity-80 transition-opacity" style={{ backgroundColor: '#7c3aed' }}>
+              <button onClick={() => setUserDropdownOpen(!userDropdownOpen)} className="w-9 h-9 rounded-full flex items-center justify-center text-white font-medium hover:brightness-110 transition bg-primary">
                 {userName ? userName.charAt(0).toUpperCase() : (userEmail?.charAt(0).toUpperCase() || 'U')}
               </button>
               {userDropdownOpen && (
@@ -372,7 +372,7 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
             <div className="border-t border-[#e0ddd4] p-3">
               <div className="relative" ref={userDropdownRef}>
                 <button onClick={() => setUserDropdownOpen(!userDropdownOpen)} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[13px] font-medium flex-shrink-0" style={{backgroundColor: '#7c3aed'}}>
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-medium hover:brightness-110 transition bg-primary">
                     {userName ? userName.charAt(0).toUpperCase() : (userEmail?.charAt(0).toUpperCase() || 'U')}
                   </div>
                   <div className="flex-1 text-left min-w-0">
@@ -404,7 +404,7 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
 
       {/* Main chat area */}
       <main className="flex-1 flex flex-col min-w-0">
-        <header className="bg-secondary border-b border-border px-6 py-3 flex items-center justify-between">
+        <header className="bg-[#f7f5ef] border-b border-[#e0ddd4] px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-xl">🖼️</span>
             <h2 className="text-[15px] font-semibold text-text">
@@ -413,39 +413,12 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
           </div>
 
           <div className="flex items-center gap-4">
-            <CreditBalance userId={userId}/>
-
-            <div className="relative" ref={userDropdownRef}>
-              <button
-                  onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-white font-medium hover:opacity-90 transition"
-                  style={{backgroundColor: '#FDB813'}}
-              >
-                {userName
-                    ? userName.charAt(0).toUpperCase()
-                    : userEmail?.charAt(0).toUpperCase() || 'U'}
-              </button>
-
-              {userDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white border border-border rounded-lg shadow-lg py-1">
-                    <div className="px-3 py-2 border-b border-border">
-                      <div className="text-[13px] font-medium text-text truncate">{userName || 'User'}</div>
-                      <div className="text-[11px] text-muted truncate">{userEmail}</div>
-                    </div>
-                    <button
-                        onClick={() => router.push('/pricing')}
-                        className="w-full text-left px-4 py-2 text-[14px] text-text hover:bg-[#F3F3F3] transition"
-                    >
-                      Upgrade to Pro
-                    </button>
-                    <button
-                        onClick={handleLogout}
-                        className="w-full text-left px-4 py-2 text-[13px] text-red-600 hover:bg-red-50 transition"
-                    >
-                      Logout
-                    </button>
-                  </div>
-              )}
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-white border border-[#e0ddd4] rounded-lg">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="#d97757">
+                <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" fill="none"/>
+                <text x="8" y="11" fontSize="8" textAnchor="middle" fill="currentColor">$</text>
+              </svg>
+              <CreditBalance userId={userId}/>
             </div>
           </div>
         </header>
@@ -466,7 +439,7 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
                       <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         {msg.type === 'text' ? (
                             <div
-                                className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'text-white bg-gradient-to-r from-[#7c3aed] to-[#a78bfa]' : 'bg-white border border-[#e0ddd4] text-[#2d2d2d]'}`}>
+                                className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'text-white bg-primary' : 'bg-white border border-[#e0ddd4] text-[#2d2d2d]'}`}>
                               <div className="text-[15px] leading-[1.6] prose prose-sm max-w-none">
                                 <ReactMarkdown>{msg.content}</ReactMarkdown>
                               </div>
@@ -489,11 +462,9 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
                       <div className="flex justify-start">
                         <div className="bg-white border border-[#e0ddd4] rounded-2xl px-4 py-3">
                           <div className="flex gap-1.5">
-                            <div className="w-2 h-2 rounded-full animate-bounce" style={{backgroundColor: '#7c3aed'}}/>
-                            <div className="w-2 h-2 rounded-full animate-bounce delay-100"
-                                 style={{backgroundColor: '#7c3aed'}}/>
-                            <div className="w-2 h-2 rounded-full animate-bounce delay-200"
-                                 style={{backgroundColor: '#7c3aed'}}/>
+                            <div className="w-2 h-2 rounded-full animate-bounce bg-primary border border-border text-text"/>
+                            <div className="w-2 h-2 rounded-full animate-bounce delay-100 bg-primary border border-border text-text"/>
+                            <div className="w-2 h-2 rounded-full animate-bounce delay-200 bg-primary border border-border text-text"/>
                           </div>
                         </div>
                       </div>
