@@ -57,6 +57,10 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
   const [userName, setUserName] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
 
+  const qualityDropdownRef = useRef<HTMLDivElement>(null)
+  const modelDropdownRef = useRef<HTMLDivElement>(null)
+  const numImagesDropdownRef = useRef<HTMLDivElement>(null)
+  const sizeDropdownRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const userDropdownRef = useRef<HTMLDivElement>(null)
   const deleteMenuRef = useRef<HTMLDivElement>(null)
@@ -68,13 +72,19 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
   }, [sidebarOpen])
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) setUserDropdownOpen(false)
-      if (deleteMenuRef.current && !deleteMenuRef.current.contains(event.target as Node)) setDeleteMenuOpen(null)
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+  const handleClickOutside = (event: MouseEvent) => {
+    if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) setUserDropdownOpen(false)
+    if (deleteMenuRef.current && !deleteMenuRef.current.contains(event.target as Node)) setDeleteMenuOpen(null)
+
+    // ✅ Close all selector dropdowns
+    if (qualityDropdownRef.current && !qualityDropdownRef.current.contains(event.target as Node)) setQualityDropdownOpen(false)
+    if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) setModelDropdownOpen(false)
+    if (numImagesDropdownRef.current && !numImagesDropdownRef.current.contains(event.target as Node)) setNumImagesDropdownOpen(false)
+    if (sizeDropdownRef.current && !sizeDropdownRef.current.contains(event.target as Node)) setSizeDropdownOpen(false)
+  }
+  document.addEventListener('mousedown', handleClickOutside)
+  return () => document.removeEventListener('mousedown', handleClickOutside)
+}, [])
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -99,111 +109,127 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
   }, [prompt])
 
   useEffect(() => {
-    const channel = supabase
-      .channel('generated-images-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'generated_images',
-          filter: `project_id=eq.${projectId}`
-        },
-        (payload) => {
-          const newImage = payload.new as GeneratedImage
-          setImages(prev => [newImage, ...prev])
-          // Add image message to chat
-          setMessages(prev => [...prev, {
-            id: `img-${Date.now()}`,
-            role: 'assistant',
-            content: 'Image generated successfully!',
-            type: 'image',
-            imageUrl: newImage.image_url
-          }])
-        }
-      )
-      .subscribe()
+  const channel = supabase
+    .channel('generated-images-changes')
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'generated_images',
+        filter: `user_id=eq.${userId}` // ✅ Only listen to current user's images
+      },
+      (payload) => {
+        const newImage = payload.new as GeneratedImage
+        // Only update if not already in the list (avoid duplicates)
+        setImages(prev => {
+          const exists = prev.some(img => img.id === newImage.id)
+          return exists ? prev : [newImage, ...prev]
+        })
+      }
+    )
+    .subscribe()
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [projectId, supabase])
+  return () => {
+    supabase.removeChannel(channel)
+  }
+}, [projectId, userId, supabase]) // ✅ Add userId to dependencies
 
   const loadImages = async () => {
-    const { data } = await supabase
-      .from('generated_images')
-      .select('*')
-      .eq('project_id', projectId)
-      .order('created_at', { ascending: false })
-      .limit(50)
+  const { data } = await supabase
+    .from('generated_images')
+    .select('*')
+    .eq('user_id', userId) // ✅ Filter by current user only
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false })
+    .limit(50)
 
-    if (data) {
-      setImages(data)
-    }
+  if (data) {
+    setImages(data)
   }
+}
 
   const generateImage = async () => {
-    if (!prompt.trim()) return
+  if (!prompt.trim()) return
 
-    setLoading(true)
+  setLoading(true)
 
-    // Add user message immediately
-    const userMsg: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: prompt,
-      type: 'text'
-    }
-    setMessages(prev => [...prev, userMsg])
+  // Add user message immediately
+  const userMsg: ChatMessage = {
+    id: `user-${Date.now()}`,
+    role: 'user',
+    content: prompt,
+    type: 'text'
+  }
+  setMessages(prev => [...prev, userMsg])
 
-    const currentPrompt = prompt
-    setPrompt("")
+  const currentPrompt = prompt
+  setPrompt("")
 
-    try {
-      const response = await fetch('/api/generate-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: currentPrompt,
-          userId,
-          projectId,
-          projectSlug,
-          model,
-          quality,
-          numImages,
-          imageSize
-        })
+  try {
+    const response = await fetch('/api/generate-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: currentPrompt,
+        userId,
+        projectId,
+        projectSlug,
+        model,
+        quality,
+        numImages,
+        imageSize
       })
+    })
 
-      const data = await response.json()
+    const data = await response.json()
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Generation failed')
-      }
+    if (!response.ok) {
+      throw new Error(data.error || 'Generation failed')
+    }
 
-      if (data.isTextResponse) {
-        // This is a clarification message
-        setMessages(prev => [...prev, {
-          id: `ai-${Date.now()}`,
-          role: 'assistant',
-          content: data.message,
-          type: 'text'
-        }])
-      }
-      // If image generated, it will appear via real-time subscription
-    } catch (error: any) {
-      console.error('Image generation error:', error)
+    if (data.isTextResponse) {
+      // This is a clarification message
       setMessages(prev => [...prev, {
-        id: `error-${Date.now()}`,
+        id: `ai-${Date.now()}`,
         role: 'assistant',
-        content: `Error: ${error.message || 'Failed to generate image'}`,
+        content: data.message,
         type: 'text'
       }])
-    } finally {
-      setLoading(false)
-    }
-  }
+    } else if (data.imageUrl) {
+      // ✅ Image generated - add to chat immediately
+      const newImageMsg: ChatMessage = {
+        id: `img-${Date.now()}`,
+        role: 'assistant',
+        content: 'Image generated successfully!',
+        type: 'image',
+        imageUrl: data.imageUrl
+      }
+      setMessages(prev => [...prev, newImageMsg])
 
+      // ✅ Add to sidebar immediately
+      const newImage: GeneratedImage = {
+        id: data.imageId || `temp-${Date.now()}`,
+        prompt: currentPrompt,
+        image_url: data.imageUrl,
+        style: model,
+        aspect_ratio: imageSize,
+        created_at: new Date().toISOString()
+      }
+      setImages(prev => [newImage, ...prev])
+    }
+  } catch (error: any) {
+    console.error('Image generation error:', error)
+    setMessages(prev => [...prev, {
+      id: `error-${Date.now()}`,
+      role: 'assistant',
+      content: `Error: ${error.message || 'Failed to generate image'}`,
+      type: 'text'
+    }])
+  } finally {
+    setLoading(false)
+  }
+}
   const downloadImage = async (imageUrl: string, filename: string) => {
     try {
       const response = await fetch(imageUrl)
@@ -333,11 +359,26 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
               {images.filter(img => img.image_url.startsWith('http')).map(image => (
                 <div key={image.id} className="relative group mb-2">
                   <button
-                    onClick={() => setSelectedImage(image)}
-                    className={`w-full text-left rounded-lg overflow-hidden transition-all ${selectedImage?.id === image.id ? 'ring-2 ring-[#7c3aed]' : 'hover:ring-2 hover:ring-[#e0ddd4]'}`}
+                      onClick={() => {
+                        setSelectedImage(image)
+                        // ✅ Also add to chat messages when clicked
+                        const imageMsg: ChatMessage = {
+                          id: `view-${image.id}`,
+                          role: 'assistant',
+                          content: image.prompt,
+                          type: 'image',
+                          imageUrl: image.image_url
+                        }
+                        // Check if already in messages
+                        const exists = messages.some(m => m.type === 'image' && m.imageUrl === image.image_url)
+                        if (!exists) {
+                          setMessages(prev => [...prev, imageMsg])
+                        }
+                      }}
+                      className={`w-full text-left rounded-lg overflow-hidden transition-all ${selectedImage?.id === image.id ? 'ring-2 ring-[#7c3aed]' : 'hover:ring-2 hover:ring-[#e0ddd4]'}`}
                   >
                     <div className="aspect-video relative bg-[#f0eee8]">
-                      <Image src={image.image_url} alt={image.prompt} fill className="object-cover" />
+                      <Image src={image.image_url} alt={image.prompt} fill className="object-cover"/>
                     </div>
                     <div className="p-2 bg-white border-x border-b border-[#e0ddd4]">
                       <p className="text-[11px] text-[#2d2d2d] line-clamp-2">{image.prompt}</p>
@@ -345,15 +386,16 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
                     </div>
                   </button>
                   {selectedImage?.id === image.id && (
-                    <div className="absolute right-2 top-2">
-                      <button onClick={() => setDeleteMenuOpen(deleteMenuOpen === image.id ? null : image.id)} className="p-1 bg-white/90 backdrop-blur-sm hover:bg-white rounded transition-colors">
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                          <circle cx="3" cy="7" r="1"/>
-                          <circle cx="7" cy="7" r="1"/>
-                          <circle cx="11" cy="7" r="1"/>
-                        </svg>
-                      </button>
-                      {deleteMenuOpen === image.id && (
+                      <div className="absolute right-2 top-2">
+                        <button onClick={() => setDeleteMenuOpen(deleteMenuOpen === image.id ? null : image.id)}
+                                className="p-1 bg-white/90 backdrop-blur-sm hover:bg-white rounded transition-colors">
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                            <circle cx="3" cy="7" r="1"/>
+                            <circle cx="7" cy="7" r="1"/>
+                            <circle cx="11" cy="7" r="1"/>
+                          </svg>
+                        </button>
+                        {deleteMenuOpen === image.id && (
                         <div ref={deleteMenuRef} className="absolute right-0 top-full mt-1 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 w-32 z-50">
                           <button onClick={() => { downloadImage(image.image_url, `${image.id}.png`); setDeleteMenuOpen(null); }} className="w-full px-3 py-1.5 text-left text-[13px] hover:bg-[#f5f5f5]">
                             Download
@@ -480,7 +522,7 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
             {/* Controls */}
             <div className="flex gap-2 mb-3 flex-wrap">
               {/* Model Selector */}
-              <div className="relative">
+              <div className="relative" ref={modelDropdownRef}>
                 <button
                     className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e0ddd4] rounded-xl text-[13px] text-[#2d2d2d] hover:border-[#d97757] transition-all"
                     onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
@@ -510,7 +552,7 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
               </div>
 
               {/* Quality Selector */}
-              <div className="relative">
+              <div className="relative" ref={qualityDropdownRef}>
                 <button
                     className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e0ddd4] rounded-xl text-[13px] text-[#2d2d2d] hover:border-[#d97757] transition-all"
                     onClick={() => setQualityDropdownOpen(!qualityDropdownOpen)}
@@ -545,7 +587,7 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
               </div>
 
               {/* Number of Images */}
-              <div className="relative">
+              <div className="relative" ref={numImagesDropdownRef}>
                 <button
                     className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e0ddd4] rounded-xl text-[13px] text-[#2d2d2d] hover:border-[#d97757] transition-all"
                     onClick={() => setNumImagesDropdownOpen(!numImagesDropdownOpen)}
@@ -575,7 +617,7 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
               </div>
 
               {/* Size Selector */}
-              <div className="relative">
+              <div className="relative" ref={sizeDropdownRef}>
                 <button
                     className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e0ddd4] rounded-xl text-[13px] text-[#2d2d2d] hover:border-[#d97757] transition-all"
                     onClick={() => setSizeDropdownOpen(!sizeDropdownOpen)}
@@ -633,9 +675,9 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
                   }}
                   disabled={loading}
                   rows={1}
-                  className="flex-1 outline-none text-[15px] text-[#2d2d2d] bg-transparent placeholder:text-[#999] resize-none max-h-[200px] overflow-y-auto"
+                  className="flex-1 outline-none text-[15px] text-[#2d2d2d] bg-transparent placeholder:text-[#999] resize-none max-h-[200px] overflow-y-auto flex items-center"
                   placeholder="Describe the advertising image you want to create..."
-                  style={{minHeight: '24px'}}
+                  style={{minHeight: '24px', lineHeight: '24px', paddingTop: '0', paddingBottom: '0'}}
               />
 
               <button
@@ -647,7 +689,7 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                 ) : (
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                      <path d="M10 4v12m6-6H4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                      <path d="M3 10h14m-6-6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
                             strokeLinejoin="round"/>
                     </svg>
                 )}
