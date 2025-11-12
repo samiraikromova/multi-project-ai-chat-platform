@@ -352,8 +352,6 @@ export default function ImageGeneratorChat(props: ImageGenProps) {
                 )}
               </div>
 
-
-
               <div className="relative">
                 <button
                   className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e0ddd4] rounded-xl text-[13px] text-[#2d2d2d] hover:border-[#d97757] transition-all"
