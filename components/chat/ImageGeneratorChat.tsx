@@ -53,7 +53,6 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
   const [sizeDropdownOpen, setSizeDropdownOpen] = useState(false)
   const [userDropdownOpen, setUserDropdownOpen] = useState(false)
   const [selectedImage, setSelectedImage] = useState<GeneratedImage | null>(null)
-  const [deleteMenuOpen, setDeleteMenuOpen] = useState<string | null>(null)
   const [userName, setUserName] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
 
@@ -63,7 +62,6 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
   const sizeDropdownRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const userDropdownRef = useRef<HTMLDivElement>(null)
-  const deleteMenuRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
   const router = useRouter()
 
@@ -74,7 +72,6 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
   useEffect(() => {
   const handleClickOutside = (event: MouseEvent) => {
     if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) setUserDropdownOpen(false)
-    if (deleteMenuRef.current && !deleteMenuRef.current.contains(event.target as Node)) setDeleteMenuOpen(null)
 
     // ✅ Close all selector dropdowns
     if (qualityDropdownRef.current && !qualityDropdownRef.current.contains(event.target as Node)) setQualityDropdownOpen(false)
@@ -270,13 +267,13 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
   }
 
   const calculateCost = () => {
-    const pricing: Record<string, Record<string, number>> = {
-      'Ideogram': { 'TURBO': 0.03, 'BALANCED': 0.06, 'QUALITY': 0.09 },
-      'Flux': { 'flux-1': 0.025, 'flux-1.1-pro': 0.04, 'flux-1.1-pro-ultra': 0.06 }
-    }
-    const cost = pricing[model]?.[quality] || 0.06
-    return (cost * numImages).toFixed(3)
+  const pricing: Record<string, Record<string, number>> = {
+    'Ideogram': { 'TURBO': 0.03, 'BALANCED': 0.06, 'QUALITY': 0.09 },
+    'Flux': { 'flux-1': 0.025, 'flux-1.1-pro': 0.04, 'flux-1.1-pro-ultra': 0.06 }
   }
+  const cost = pricing[model]?.[quality] || 0.06
+  return (cost * numImages).toFixed(2)
+}
 
   return (
     <div className="flex h-screen bg-[#f7f5ef]">
@@ -357,58 +354,62 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
                 <div className="text-[11px] text-[#8b8b8b] px-3 py-2 font-medium">RECENTLY GENERATED</div>
               )}
               {images.filter(img => img.image_url.startsWith('http')).map(image => (
-                <div key={image.id} className="relative group mb-2">
-                  <button
-                      onClick={() => {
-                        setSelectedImage(image)
-                        // ✅ Also add to chat messages when clicked
-                        const imageMsg: ChatMessage = {
-                          id: `view-${image.id}`,
-                          role: 'assistant',
-                          content: image.prompt,
-                          type: 'image',
-                          imageUrl: image.image_url
-                        }
-                        // Check if already in messages
-                        const exists = messages.some(m => m.type === 'image' && m.imageUrl === image.image_url)
-                        if (!exists) {
-                          setMessages(prev => [...prev, imageMsg])
-                        }
-                      }}
-                      className={`w-full text-left rounded-lg overflow-hidden transition-all ${selectedImage?.id === image.id ? 'ring-2 ring-[#7c3aed]' : 'hover:ring-2 hover:ring-[#e0ddd4]'}`}
-                  >
-                    <div className="aspect-video relative bg-[#f0eee8]">
-                      <Image src={image.image_url} alt={image.prompt} fill className="object-cover"/>
+              <div key={image.id} className="relative group mb-2">
+                <button
+                  onClick={() => {
+                    setSelectedImage(image)
+                    const imageMsg: ChatMessage = {
+                      id: `view-${image.id}`,
+                      role: 'assistant',
+                      content: image.prompt,
+                      type: 'image',
+                      imageUrl: image.image_url
+                    }
+                    const exists = messages.some(m => m.type === 'image' && m.imageUrl === image.image_url)
+                    if (!exists) {
+                      setMessages(prev => [...prev, imageMsg])
+                    }
+                  }}
+                  className={`w-full text-left rounded-lg overflow-hidden transition-all ${selectedImage?.id === image.id ? 'ring-2 ring-[#7c3aed]' : 'hover:ring-2 hover:ring-[#e0ddd4]'}`}
+                >
+                  <div className="aspect-video relative bg-[#f0eee8]">
+                    <Image src={image.image_url} alt={image.prompt} fill className="object-cover" />
+
+                    {/* ✅ Hover Icons - Top Right */}
+                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          downloadImage(image.image_url, `${image.id}.png`)
+                        }}
+                        className="p-1.5 bg-white/90 backdrop-blur-sm rounded-md hover:bg-white transition-colors shadow-sm"
+                        title="Download"
+                      >
+                        <svg className="w-3.5 h-3.5 text-[#2d2d2d]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          deleteImage(image.id)
+                        }}
+                        className="p-1.5 bg-white/90 backdrop-blur-sm rounded-md hover:bg-red-50 transition-colors shadow-sm"
+                        title="Delete"
+                      >
+                        <svg className="w-3.5 h-3.5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
                     </div>
-                    <div className="p-2 bg-white border-x border-b border-[#e0ddd4]">
-                      <p className="text-[11px] text-[#2d2d2d] line-clamp-2">{image.prompt}</p>
-                      <p className="text-[9px] text-[#8b8b8b] mt-1">{new Date(image.created_at).toLocaleDateString()}</p>
-                    </div>
-                  </button>
-                  {selectedImage?.id === image.id && (
-                      <div className="absolute right-2 top-2">
-                        <button onClick={() => setDeleteMenuOpen(deleteMenuOpen === image.id ? null : image.id)}
-                                className="p-1 bg-white/90 backdrop-blur-sm hover:bg-white rounded transition-colors">
-                          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                            <circle cx="3" cy="7" r="1"/>
-                            <circle cx="7" cy="7" r="1"/>
-                            <circle cx="11" cy="7" r="1"/>
-                          </svg>
-                        </button>
-                        {deleteMenuOpen === image.id && (
-                        <div ref={deleteMenuRef} className="absolute right-0 top-full mt-1 bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1 w-32 z-50">
-                          <button onClick={() => { downloadImage(image.image_url, `${image.id}.png`); setDeleteMenuOpen(null); }} className="w-full px-3 py-1.5 text-left text-[13px] hover:bg-[#f5f5f5]">
-                            Download
-                          </button>
-                          <button onClick={() => deleteImage(image.id)} className="w-full px-3 py-1.5 text-left text-[13px] text-red-600 hover:bg-red-50">
-                            Delete
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
+                  </div>
+                  <div className="p-2 bg-white border-x border-b border-[#e0ddd4]">
+                    <p className="text-[11px] text-[#2d2d2d] line-clamp-2">{image.prompt}</p>
+                    <p className="text-[9px] text-[#8b8b8b] mt-1">{new Date(image.created_at).toLocaleDateString()}</p>
+                  </div>
+                </button>
+              </div>
+            ))}
             </div>
 
             <div className="border-t border-[#e0ddd4] p-3">
@@ -480,24 +481,57 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
                   {messages.map(msg => (
                       <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         {msg.type === 'text' ? (
-                            <div
-                                className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'text-white bg-primary' : 'bg-white border border-[#e0ddd4] text-[#2d2d2d]'}`}>
-                              <div className="text-[15px] leading-[1.6] prose prose-sm max-w-none">
-                                <ReactMarkdown>{msg.content}</ReactMarkdown>
+                        <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'text-white bg-primary' : 'bg-white border border-[#e0ddd4] text-[#2d2d2d]'}`}>
+                          <div className="text-[15px] leading-[1.6] prose prose-sm max-w-none">
+                            <ReactMarkdown>{msg.content}</ReactMarkdown>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="max-w-[85%] relative group">
+                          <div className="bg-white border border-[#e0ddd4] rounded-2xl overflow-hidden">
+                            <div className="aspect-video relative bg-[#f0eee8]">
+                              <Image src={msg.imageUrl!} alt="Generated" fill className="object-contain"/>
+
+                              {/* ✅ Download & Delete Icons - Top Right */}
+                              <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    downloadImage(msg.imageUrl!, `image-${Date.now()}.png`)
+                                  }}
+                                  className="p-2 bg-white/90 backdrop-blur-sm rounded-lg hover:bg-white transition-colors shadow-sm"
+                                  title="Download"
+                                >
+                                  <svg className="w-4 h-4 text-[#2d2d2d]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                  </svg>
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    // Find the image in images array and delete it
+                                    const imageToDelete = images.find(img => img.image_url === msg.imageUrl)
+                                    if (imageToDelete) {
+                                      deleteImage(imageToDelete.id)
+                                    }
+                                    // Remove from messages
+                                    setMessages(prev => prev.filter(m => m.id !== msg.id))
+                                  }}
+                                  className="p-2 bg-white/90 backdrop-blur-sm rounded-lg hover:bg-red-50 transition-colors shadow-sm"
+                                  title="Delete"
+                                >
+                                  <svg className="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                </button>
                               </div>
                             </div>
-                        ) : (
-                            <div className="max-w-[85%]">
-                              <div className="bg-white border border-[#e0ddd4] rounded-2xl overflow-hidden">
-                                <div className="aspect-video relative bg-[#f0eee8]">
-                                <Image src={msg.imageUrl!} alt="Generated" fill className="object-contain"/>
-                                </div>
-                                <div className="p-3">
-                                  <p className="text-[13px] text-[#2d2d2d]">{msg.content}</p>
-                                </div>
-                              </div>
+                            <div className="p-3">
+                              <p className="text-[13px] text-[#2d2d2d]">{msg.content}</p>
                             </div>
-                        )}
+                          </div>
+                        </div>
+                      )}
                       </div>
                   ))}
                   {loading && (

@@ -23,7 +23,6 @@ function calculateImageCost(model: string, quality: string, numImages: number): 
   const cost = pricing[model]?.[quality] || 0.06;
   return cost * numImages;
 }
-
 export async function POST(req: NextRequest) {
   try {
     const {
@@ -114,11 +113,14 @@ export async function POST(req: NextRequest) {
 
     // Deduct credits
     const actualCost = result.usage?.cost || estimatedCost;
-    const newCredits = Number(user.credits) - actualCost;
+    const newCredits = Number((Number(user.credits) - actualCost).toFixed(2)); // ✅ Round to 2 decimals
 
     await supabase
       .from("users")
-      .update({ credits: newCredits })
+      .update({
+        credits: newCredits,
+        last_credit_update: new Date().toISOString()
+      })
       .eq("id", userId);
 
     // Log usage
