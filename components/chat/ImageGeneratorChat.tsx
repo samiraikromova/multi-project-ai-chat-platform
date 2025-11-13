@@ -355,7 +355,7 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
               )}
               {images.filter(img => img.image_url.startsWith('http')).map(image => (
               <div key={image.id} className="relative group mb-2">
-                <button
+                <div
                   onClick={() => {
                     setSelectedImage(image)
                     const imageMsg: ChatMessage = {
@@ -370,13 +370,13 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
                       setMessages(prev => [...prev, imageMsg])
                     }
                   }}
-                  className={`w-full text-left rounded-lg overflow-hidden transition-all ${selectedImage?.id === image.id ? 'ring-2 ring-[#7c3aed]' : 'hover:ring-2 hover:ring-[#e0ddd4]'}`}
+                  className={`w-full cursor-pointer rounded-lg overflow-hidden transition-all ${selectedImage?.id === image.id ? 'ring-2 ring-[#7c3aed]' : 'hover:ring-2 hover:ring-[#e0ddd4]'}`}
                 >
                   <div className="aspect-video relative bg-[#f0eee8]">
                     <Image src={image.image_url} alt={image.prompt} fill className="object-cover" />
 
                     {/* ✅ Hover Icons - Top Right */}
-                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
@@ -407,7 +407,7 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
                     <p className="text-[11px] text-[#2d2d2d] line-clamp-2">{image.prompt}</p>
                     <p className="text-[9px] text-[#8b8b8b] mt-1">{new Date(image.created_at).toLocaleDateString()}</p>
                   </div>
-                </button>
+                </div>
               </div>
             ))}
             </div>
@@ -481,66 +481,77 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
                   {messages.map(msg => (
                       <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         {msg.type === 'text' ? (
-                        <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'text-white bg-primary' : 'bg-white border border-[#e0ddd4] text-[#2d2d2d]'}`}>
-                          <div className="text-[15px] leading-[1.6] prose prose-sm max-w-none">
-                            <ReactMarkdown>{msg.content}</ReactMarkdown>
+                          <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'text-white bg-primary' : 'bg-white border border-[#e0ddd4] text-[#2d2d2d]'}`}>
+                            <div className="text-[15px] leading-[1.6] whitespace-pre-wrap">
+                              {msg.content}
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="max-w-[85%] relative group">
-                          <div className="bg-white border border-[#e0ddd4] rounded-2xl overflow-hidden">
-                            <div className="aspect-video relative bg-[#f0eee8]">
-                              <Image src={msg.imageUrl!} alt="Generated" fill className="object-contain"/>
+                        ) : (
+                            <div className="w-[600px] relative group">
+                              <div className="bg-white border border-[#e0ddd4] rounded-2xl overflow-hidden">
+                                <div className="relative bg-[#f0eee8] w-full" style={{aspectRatio: '16/9'}}>
+                                  <Image
+                                      src={msg.imageUrl!}
+                                      alt="Generated"
+                                      fill
+                                      className="object-contain"
+                                      sizes="600px"
+                                  />
 
-                              {/* ✅ Download & Delete Icons - Top Right */}
-                              <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    downloadImage(msg.imageUrl!, `image-${Date.now()}.png`)
-                                  }}
-                                  className="p-2 bg-white/90 backdrop-blur-sm rounded-lg hover:bg-white transition-colors shadow-sm"
-                                  title="Download"
-                                >
-                                  <svg className="w-4 h-4 text-[#2d2d2d]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                  </svg>
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    // Find the image in images array and delete it
-                                    const imageToDelete = images.find(img => img.image_url === msg.imageUrl)
-                                    if (imageToDelete) {
-                                      deleteImage(imageToDelete.id)
-                                    }
-                                    // Remove from messages
-                                    setMessages(prev => prev.filter(m => m.id !== msg.id))
-                                  }}
-                                  className="p-2 bg-white/90 backdrop-blur-sm rounded-lg hover:bg-red-50 transition-colors shadow-sm"
-                                  title="Delete"
-                                >
-                                  <svg className="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                  </svg>
-                                </button>
+                                  {/* ✅ Download & Delete Icons - Top Right */}
+                                  <div
+                                      className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                    <button
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          downloadImage(msg.imageUrl!, `image-${Date.now()}.png`)
+                                        }}
+                                        className="p-2 bg-white/90 backdrop-blur-sm rounded-lg hover:bg-white transition-colors shadow-sm"
+                                        title="Download"
+                                    >
+                                      <svg className="w-4 h-4 text-[#2d2d2d]" fill="none" viewBox="0 0 24 24"
+                                           stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                      </svg>
+                                    </button>
+                                    <button
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          const imageToDelete = images.find(img => img.image_url === msg.imageUrl)
+                                          if (imageToDelete) {
+                                            deleteImage(imageToDelete.id)
+                                          }
+                                          setMessages(prev => prev.filter(m => m.id !== msg.id))
+                                        }}
+                                        className="p-2 bg-white/90 backdrop-blur-sm rounded-lg hover:bg-red-50 transition-colors shadow-sm"
+                                        title="Delete"
+                                    >
+                                      <svg className="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24"
+                                           stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </div>
+                                {msg.content && msg.content !== 'Image generated successfully!' && (
+                                    <div className="p-3 border-t border-[#e0ddd4]">
+                                      <p className="text-[13px] text-[#2d2d2d]">{msg.content}</p>
+                                    </div>
+                                )}
                               </div>
                             </div>
-                            <div className="p-3">
-                              <p className="text-[13px] text-[#2d2d2d]">{msg.content}</p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                        )}
                       </div>
                   ))}
                   {loading && (
                       <div className="flex justify-start">
                         <div className="bg-white border border-[#e0ddd4] rounded-2xl px-4 py-3">
                           <div className="flex gap-1.5">
-                            <div className="w-2 h-2 rounded-full animate-bounce bg-primary border border-border text-text"/>
-                            <div className="w-2 h-2 rounded-full animate-bounce delay-100 bg-primary border border-border text-text"/>
-                            <div className="w-2 h-2 rounded-full animate-bounce delay-200 bg-primary border border-border text-text"/>
+                            <div className="w-2 h-2 rounded-full animate-bounce bg-primary"/>
+                            <div className="w-2 h-2 rounded-full animate-bounce delay-100 bg-primary"/>
+                            <div className="w-2 h-2 rounded-full animate-bounce delay-200 bg-primary"/>
                           </div>
                         </div>
                       </div>
