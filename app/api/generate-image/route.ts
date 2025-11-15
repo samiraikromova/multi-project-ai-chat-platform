@@ -122,12 +122,12 @@ export async function POST(req: NextRequest) {
       }, { status: 500 });
     }
 
-    // Check if this is a clarification message (text, not image)
+    // Check if this is a text response (clarification) or image URL(s)
     const isImageUrl = (typeof output === 'string' && output.startsWith('http')) ||
                        (Array.isArray(output) && output.length > 0 && output[0].startsWith('http'));
 
     if (!isImageUrl) {
-      console.log('💬 Clarification message received');
+      // Text response (clarification)
       return NextResponse.json({
         success: true,
         isTextResponse: true,
@@ -136,46 +136,57 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ✅ SUCCESS - We have valid image URL(s)
-    const imageUrls = Array.isArray(output) ? output : [output];
+    // ✅ Handle multiple image URLs
+    let imageUrls = [];
+
+    // Check if result has imageUrls array (preferred)
+    if (result.imageUrls && Array.isArray(result.imageUrls)) {
+      imageUrls = result.imageUrls;
+    }
+    // Fallback: check output field
+    else if (Array.isArray(output)) {
+      imageUrls = output;
+    } else if (typeof output === 'string') {
+      imageUrls = [output];
+    }
+
     console.log(`✅ Generated ${imageUrls.length} image(s)`);
 
     const savedImages = [];
 
-    // Store images in database
-    // Store images in database
-for (const imageUrl of imageUrls) {
-  console.log('💾 Saving image with thread_id:', threadId); // ✅ Debug log
+    // Store all images in database
+    for (const imageUrl of imageUrls) {
+      const { data: savedImage, error: saveError } = await supabase
+        .from("generated_images")
+        .insert({
+          user_id: userId,
+          project_id: projectId,
+          prompt: message,
+          image_url: imageUrl,
+          style: 'Ideogram',
+          aspect_ratio: imageSize,
+          thread_id: threadId
+        })
+        .select()
+        .single();
 
-  const { data: savedImage, error: saveError } = await supabase
-    .from("generated_images")
-    .insert({
-      user_id: userId,
-      project_id: projectId,
-      prompt: message,
-      image_url: imageUrl,
-      style: 'Ideogram',
-      aspect_ratio: imageSize,
-      thread_id: threadId // ✅ Make sure this is not null
-    })
-    .select()
-    .single();
+      if (saveError) {
+        console.error('⚠️ Failed to save image:', saveError);
+      } else if (savedImage) {
+        savedImages.push(savedImage);
+      }
+    }
 
-  if (saveError) {
-    console.error('⚠️ Failed to save image:', saveError);
-  } else if (savedImage) {
-    console.log('✅ Image saved with ID:', savedImage.id);
-    savedImages.push(savedImage);
-  }
-}
+    // ✅ Calculate cost based on ACTUAL number of images generated
+    const actualNumImages = imageUrls.length;
+    const actualCost = result.usage?.cost
+      ? Number((result.usage.cost * actualNumImages / (result.usage.numImages || 1)).toFixed(2))
+      : calculateImageCost('Ideogram', quality, actualNumImages);
 
-    // ✅ ONLY NOW deduct credits
-    const actualCost = result.usage?.cost || estimatedCost;
     const newCredits = Number((Number(user.credits) - actualCost).toFixed(2));
 
-    console.log(`💰 Deducting ${actualCost} credits. New balance: ${newCredits}`);
-
-    const { error: creditError } = await supabase
+    console.log(`💰 Deducting ${actualCost} credits for ${actualNumImages} images. New balance: ${newCredits}`);
+        const { error: creditError } = await supabase
       .from("users")
       .update({
         credits: newCredits,

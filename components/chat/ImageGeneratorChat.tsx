@@ -247,41 +247,67 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
 
     const data = await response.json()
 
-    if (!response.ok) {
-      throw new Error(data.error || 'Generation failed')
+if (!response.ok) {
+  throw new Error(data.error || data.details || 'Generation failed')
+}
+
+if (data.error || !data.success) {
+  setMessages(prev => [...prev, {
+    id: `error-${Date.now()}`,
+    role: 'assistant',
+    content: data.error || data.details || 'Failed to generate image',
+    type: 'text'
+  }])
+  setLoading(false)
+  return
+}
+
+if (data.isTextResponse) {
+  setMessages(prev => [...prev, {
+    id: `ai-${Date.now()}`,
+    role: 'assistant',
+    content: data.message,
+    type: 'text'
+  }])
+} else if (data.imageUrls && Array.isArray(data.imageUrls) && data.imageUrls.length > 0) {
+  // ✅ Update thread title if needed
+  if (currentThreadId) {
+    const currentThread = threads.find(t => t.id === currentThreadId)
+    if (currentThread && currentThread.title === 'New Image Chat') {
+      const newTitle = currentPrompt.substring(0, 50)
+      await supabase
+          .from('chat_threads')
+          .update({title: newTitle})
+          .eq('id', currentThreadId)
+
+      loadThreads()
     }
+  }
 
-    if (data.isTextResponse) {
-      // This is a clarification message
-      setMessages(prev => [...prev, {
-        id: `ai-${Date.now()}`,
-        role: 'assistant',
-        content: data.message,
-        type: 'text'
-      }])
-    }  else if (data.imageUrls && Array.isArray(data.imageUrls)) {
-      // ✅ Multiple images generated
-      data.imageUrls.forEach((imageUrl: string, index: number) => {
-        const newImageMsg: ChatMessage = {
-          id: `img-${Date.now()}-${index}`,
-          role: 'assistant',
-          content: currentPrompt, // ✅ Use original prompt instead of success message
-          type: 'image',
-          imageUrl: imageUrl
-        }
-        setMessages(prev => [...prev, newImageMsg])
+  // ✅ Add all images to chat
+  data.imageUrls.forEach((imageUrl: string, index: number) => {
+    const newImageMsg: ChatMessage = {
+      id: `img-${Date.now()}-${index}`,
+      role: 'assistant',
+      content: currentPrompt,
+      type: 'image',
+      imageUrl: imageUrl
+    }
+    setMessages(prev => [...prev, newImageMsg])
 
-        // Add to sidebar
-        const newImage: GeneratedImage = {
-          id: data.imageIds?.[index] || `temp-${Date.now()}-${index}`,
-          prompt: currentPrompt,
-          image_url: imageUrl,
-          style: 'Ideogram',
-          aspect_ratio: imageSize,
-          created_at: new Date().toISOString()
-        }
-        setImages(prev => [newImage, ...prev])
-      })
+    // ✅ Add to sidebar (will be filtered by real-time subscription)
+    const newImage: GeneratedImage = {
+      id: data.imageIds?.[index] || `temp-${Date.now()}-${index}`,
+      prompt: currentPrompt,
+      image_url: imageUrl,
+      style: 'Ideogram',
+      aspect_ratio: imageSize,
+      created_at: new Date().toISOString()
+    }
+    setImages(prev => [newImage, ...prev])
+  })
+
+  console.log(`✅ Added ${data.imageUrls.length} images to chat`)
 
 
 
