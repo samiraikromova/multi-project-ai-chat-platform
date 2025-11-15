@@ -33,11 +33,11 @@ export async function POST(req: NextRequest) {
       projectSlug,
       quality,
       numImages,
-      imageSize,
+      aspectRatio,
       threadId
     } = await req.json();
 
-    console.log('📸 Image generation request:', { userId, quality, numImages, imageSize });
+    console.log('📸 Image generation request:', { userId, threadId, numImages });
 
     // Check credits FIRST
     const { data: user } = await supabase
@@ -65,13 +65,14 @@ export async function POST(req: NextRequest) {
       model: 'Ideogram',
       quality,
       numImages,
-      imageSize,
+      aspectRatio,
       userMessage: message,
       messageContent: message,
       threadId
     };
 
     console.log('🔄 Calling N8N for image generation...');
+    console.log('📦 N8N Payload being sent:', JSON.stringify(n8nPayload, null, 2));
 
     let n8nResponse;
     let result;
@@ -136,26 +137,35 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ✅ Handle multiple image URLs
-    let imageUrls = [];
-
-    // Check if result has imageUrls array (preferred)
-    if (result.imageUrls && Array.isArray(result.imageUrls)) {
-      imageUrls = result.imageUrls;
-    }
-    // Fallback: check output field
-    else if (Array.isArray(output)) {
-      imageUrls = output;
-    } else if (typeof output === 'string') {
-      imageUrls = [output];
-    }
+    const imageUrls = Array.isArray(output)
+      ? (result.imageUrls || output)
+      : (result.imageUrls || [output]);
 
     console.log(`✅ Generated ${imageUrls.length} image(s)`);
 
     const savedImages = [];
 
-    // Store all images in database
+    // ✅ FIRST: Save user message
+    if (threadId) {
+      const { error: userMsgError } = await supabase
+        .from('messages')
+        .insert({
+          thread_id: threadId,
+          role: 'user',
+          content: message,
+          model: 'Ideogram'
+        });
+
+      if (userMsgError) {
+        console.error('⚠️ Failed to save user message:', userMsgError);
+      } else {
+        console.log('✅ Saved user message');
+      }
+    }
+
+    // ✅ THEN: Save images and assistant messages
     for (const imageUrl of imageUrls) {
+      // Save to generated_images table
       const { data: savedImage, error: saveError } = await supabase
         .from("generated_images")
         .insert({
@@ -164,7 +174,7 @@ export async function POST(req: NextRequest) {
           prompt: message,
           image_url: imageUrl,
           style: 'Ideogram',
-          aspect_ratio: imageSize,
+          aspect_ratio: aspectRatio,
           thread_id: threadId
         })
         .select()
@@ -172,21 +182,42 @@ export async function POST(req: NextRequest) {
 
       if (saveError) {
         console.error('⚠️ Failed to save image:', saveError);
-      } else if (savedImage) {
+        continue; // Skip to next image
+      }
+
+      if (savedImage) {
+        console.log('✅ Saved image to generated_images:', savedImage.id);
         savedImages.push(savedImage);
 
-        // ✅ Also save to messages table for thread history
-        await supabase
-          .from('messages')
-          .insert({
-            thread_id: threadId,
-            role: 'assistant',
-            content: imageUrl, // Store URL as content
-            model: 'Ideogram'
-          });
+        // ✅ Save to messages table
+        if (threadId) {
+          const { error: msgError } = await supabase
+            .from('messages')
+            .insert({
+              thread_id: threadId,
+              role: 'assistant',
+              content: imageUrl, // Store the URL
+              model: 'Ideogram'
+            });
+
+          if (msgError) {
+            console.error('⚠️ Failed to save assistant message:', msgError);
+          } else {
+            console.log('✅ Saved assistant message with image URL');
+          }
+        }
       }
     }
-    // ✅ Calculate cost based on ACTUAL number of images generated
+
+    // ✅ Update thread timestamp
+    if (threadId) {
+      await supabase
+        .from('chat_threads')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', threadId);
+
+      console.log('✅ Updated thread timestamp');
+    }
     const actualNumImages = imageUrls.length;
     const actualCost = result.usage?.cost
       ? Number((result.usage.cost * actualNumImages / (result.usage.numImages || 1)).toFixed(2))
@@ -219,7 +250,7 @@ export async function POST(req: NextRequest) {
         type: "image_generation",
         quality,
         numImages: imageUrls.length,
-        imageSize,
+        aspectRatio,
         thread_id: threadId
       },
     });

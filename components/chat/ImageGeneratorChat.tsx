@@ -28,7 +28,8 @@ interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   type: 'text' | 'image'
-  imageUrl?: string
+  imageUrl?: string,
+  aspectRatio?: string
 }
 
 export default function ImageGeneratorChat({ userId, projectId, projectSlug, projectName }: ImageGeneratorChatProps) {
@@ -39,6 +40,7 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
   const [quality, setQuality] = useState('BALANCED')
   const [currentThreadTitle, setCurrentThreadTitle] = useState("New Chat")
   const [numImages, setNumImages] = useState(1)
+  const [threadTotalCost, setThreadTotalCost] = useState(0)
   const [imageSize, setImageSize] = useState('square_hd')
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -73,6 +75,15 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
   }, [sidebarOpen])
 
   useEffect(() => {
+  // ✅ Reset state when component mounts
+  setCurrentThreadId(null)
+  setMessages([])
+  setThreads([])
+
+  loadThreads()
+}, [projectId, userId])
+
+  useEffect(() => {
   const handleClickOutside = (event: MouseEvent) => {
     if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) setUserDropdownOpen(false)
 
@@ -101,6 +112,10 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
   }, [projectId])
 
   useEffect(() => {
+    loadThreads()
+  }, [projectId, userId])
+
+  useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
       textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px'
@@ -111,44 +126,29 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
   loadThreads()
 }, [projectId, userId])
 
-  useEffect(() => {
-  loadImages()
-}, [currentThreadId])
+
 
   useEffect(() => {
   if (!currentThreadId) return
 
-  const channel = supabase
-    .channel('generated-images-changes')
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'generated_images',
-        filter: `thread_id=eq.${currentThreadId}`
-      },
-      (payload) => {
-        const newImage = payload.new as GeneratedImage
-        if (newImage?.image_url) {
-          // ✅ Add to messages in real-time
-          setMessages(prev => [...prev, {
-            id: `img-realtime-${Date.now()}`,
-            role: 'assistant',
-            content: newImage.prompt,
-            type: 'image',
-            imageUrl: newImage.image_url
-          }])
-        }
-      }
-    )
-    .subscribe()
+  let lastMessageCount = messages.length
 
-  return () => {
-    supabase.removeChannel(channel)
-  }
-}, [currentThreadId, supabase])
+  const pollInterval = setInterval(async () => {
+    const { data } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('thread_id', currentThreadId)
+      .order('created_at', { ascending: true })
 
+    if (data && data.length > lastMessageCount) {
+      console.log('📨 New messages detected via polling')
+      switchThread(currentThreadId) // Reload messages
+      lastMessageCount = data.length
+    }
+  }, 2000) // Check every 2 seconds
+
+  return () => clearInterval(pollInterval)
+}, [currentThreadId, messages.length])
   const loadImages = async () => {
   if (!currentThreadId) {
     setImages([])
@@ -215,116 +215,116 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
         </div>
       )
     }
+
+
   const generateImage = async () => {
   if (!prompt.trim()) return
 
   setLoading(true)
 
-  // Add user message immediately
-  const userMsg: ChatMessage = {
-    id: `user-${Date.now()}`,
-    role: 'user',
-    content: prompt,
-    type: 'text'
-  }
-  setMessages(prev => [...prev, userMsg])
+  let activeThreadId = currentThreadId
 
-  const currentPrompt = prompt
-  setPrompt("")
+  if (!activeThreadId) {
+    const { data: newThread } = await supabase
+      .from('chat_threads')
+      .insert({
+        user_id: userId,
+        project_id: projectId,
+        title: prompt.substring(0, 50),
+        model: 'Ideogram'
+      })
+      .select()
+      .single()
 
-  try {
-    const response = await fetch('/api/generate-image', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      message: currentPrompt,
-      userId,
-      projectId,
-      projectSlug,
-      model: 'Ideogram',
-      quality,
-      numImages,
-      imageSize,
-      threadId: currentThreadId // ✅ Pass thread ID
-    })
-  })
-
-    const data = await response.json()
-
-if (!response.ok) {
-  throw new Error(data.error || data.details || 'Generation failed')
-}
-
-if (data.error || !data.success) {
-  setMessages(prev => [...prev, {
-    id: `error-${Date.now()}`,
-    role: 'assistant',
-    content: data.error || data.details || 'Failed to generate image',
-    type: 'text'
-  }])
-  setLoading(false)
-  return
-}
-
-if (data.isTextResponse) {
-  setMessages(prev => [...prev, {
-    id: `ai-${Date.now()}`,
-    role: 'assistant',
-    content: data.message,
-    type: 'text'
-  }])
-} else if (data.imageUrls && Array.isArray(data.imageUrls) && data.imageUrls.length > 0) {
-  // ✅ Update thread title if needed
-  if (currentThreadId) {
-    const currentThread = threads.find(t => t.id === currentThreadId)
-    if (currentThread && currentThread.title === 'New Image Chat') {
-      const newTitle = currentPrompt.substring(0, 50)
-      await supabase
-          .from('chat_threads')
-          .update({title: newTitle})
-          .eq('id', currentThreadId)
-
+    if (newThread) {
+      activeThreadId = newThread.id
+      setCurrentThreadId(newThread.id)
       loadThreads()
     }
   }
 
-  // ✅ Add all images to chat
-  data.imageUrls.forEach((imageUrl: string, index: number) => {
-    const newImageMsg: ChatMessage = {
-      id: `img-${Date.now()}-${index}`,
-      role: 'assistant',
+  const currentPrompt = prompt
+  setPrompt("")
+
+  // ✅ Add user message immediately
+  const userMsgId = `user-${Date.now()}`
+  setMessages(prev => [...prev, {
+    id: userMsgId,
+    role: 'user',
+    content: currentPrompt,
+    type: 'text'
+  }])
+
+  try {
+    const response = await fetch('/api/generate-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: currentPrompt,
+        userId,
+        projectId,
+        projectSlug,
+        quality,
+        numImages,
+        aspectRatio: imageSize,
+        threadId: activeThreadId
+      })
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || data.details || 'Generation failed')
+    }
+
+    if (data.error || !data.success) {
+      setMessages(prev => [...prev, {
+        id: `error-${Date.now()}`,
+        role: 'assistant',
+        content: data.error || data.details || 'Failed to generate image',
+        type: 'text'
+      }])
+      setLoading(false)
+      return
+    }
+
+    if (data.isTextResponse) {
+      setMessages(prev => [...prev, {
+        id: `ai-${Date.now()}`,
+        role: 'assistant',
+        content: data.message,
+        type: 'text'
+      }])
+    } else if (data.imageUrls && data.imageUrls.length > 0) {
+
+      const imageMessages = data.imageUrls.map((url: string, idx: number) => ({
+      id: `img-${Date.now()}-${idx}`,
+      role: 'assistant' as const,
       content: currentPrompt,
-      type: 'image',
-      imageUrl: imageUrl
+      type: 'image' as const,
+      imageUrl: url,
+      aspectRatio: imageSize // ✅ Add this
+    }))
+
+      setMessages(prev => [...prev, ...imageMessages])
     }
-    setMessages(prev => [...prev, newImageMsg])
 
-    // ✅ Add to sidebar (will be filtered by real-time subscription)
-    const newImage: GeneratedImage = {
-      id: data.imageIds?.[index] || `temp-${Date.now()}-${index}`,
-      prompt: currentPrompt,
-      image_url: imageUrl,
-      style: 'Ideogram',
-      aspect_ratio: imageSize,
-      created_at: new Date().toISOString()
+    if (data.cost) {
+    setThreadTotalCost(prev => prev + data.cost)
+  }
+    // ✅ Update thread title
+    if (activeThreadId && data.success && !data.isTextResponse) {
+      const currentThread = threads.find(t => t.id === activeThreadId)
+      if (currentThread && currentThread.title === 'New Image Chat') {
+        await supabase
+          .from('chat_threads')
+          .update({ title: currentPrompt.substring(0, 50) })
+          .eq('id', activeThreadId)
+
+        loadThreads()
+      }
     }
-    setImages(prev => [newImage, ...prev])
-  })
 
-  console.log(`✅ Added ${data.imageUrls.length} images to chat`)
-
-
-
-      const newImage: GeneratedImage = {
-      id: data.imageId || `temp-${Date.now()}`,
-      prompt: currentPrompt,
-      image_url: data.imageUrl,
-      style: 'Ideogram', // ✅ Add this line
-      aspect_ratio: imageSize,
-      created_at: new Date().toISOString()
-    }
-      setImages(prev => [newImage, ...prev])
-    }
   } catch (error: any) {
     console.error('Image generation error:', error)
     setMessages(prev => [...prev, {
@@ -383,22 +383,41 @@ if (data.isTextResponse) {
   const cost = pricing['Ideogram']?.[quality] || 0.06
   return (cost * numImages).toFixed(2)
 }
- const loadThreads = async () => {
-  const { data } = await supabase
+  const loadThreads = async () => {
+  console.log('=== LOADING THREADS ===')
+  console.log('User ID:', userId)
+  console.log('Project ID:', projectId)
+setCurrentThreadId
+  const { data, error } = await supabase
     .from('chat_threads')
     .select('*')
-    .eq('project_id', projectId)
     .eq('user_id', userId)
+    .eq('project_id', projectId)
     .order('updated_at', { ascending: false })
-    .limit(20)
+    .limit(50)
+
+  if (error) {
+    console.error('❌ Error loading threads:', error)
+    return
+  }
 
   if (data) {
+    console.log(`✅ Loaded ${data.length} threads:`)
+    data.forEach((t, idx) => {
+      console.log(`  ${idx + 1}. ${t.id.substring(0, 8)}... - ${t.title}`)
+    })
     setThreads(data)
-  }
-}
 
+    // Auto-select first thread if none selected
+    if (!currentThreadId && data.length > 0) {
+      console.log('🎯 Auto-selecting first thread:', data[0].id)
+      switchThread(data[0].id)
+    }
+  }
+  console.log('===================')
+}
 const createNewThread = async () => {
-  const { data: newThread } = await supabase
+  const { data: newThread, error } = await supabase
     .from('chat_threads')
     .insert({
       user_id: userId,
@@ -409,13 +428,21 @@ const createNewThread = async () => {
     .select()
     .single()
 
+  if (error) {
+    console.error('Error creating thread:', error)
+    return
+  }
+
   if (newThread) {
     setCurrentThreadId(newThread.id)
     setMessages([])
     setImages([])
+    setThreadTotalCost(0)
     loadThreads()
+    console.log('✅ Created and switched to new thread:', newThread.id)
   }
 }
+
 const renameThread = async (threadId: string, newName: string) => {
   await supabase
     .from('chat_threads')
@@ -439,65 +466,106 @@ const deleteThread = async (threadId: string) => {
 }
 
 const switchThread = async (threadId: string) => {
+  console.log('=== SWITCHING THREAD ===')
+  console.log('Target thread ID:', threadId)
+  console.log('Current thread ID:', currentThreadId)
+
+  // ✅ Set immediately to prevent race conditions
   setCurrentThreadId(threadId)
   setMessages([])
   setImages([])
+  setThreadTotalCost(0)
 
-  console.log('🔄 Switching to thread:', threadId)
+  try {
+    const { data: usageLogs } = await supabase
+      .from('usage_logs')
+      .select('estimated_cost')
+      .eq('user_id', userId)
+      .eq('project_id', projectId)
+      .contains('metadata', { thread_id: threadId })
 
-  // ✅ Load thread images first
-  const { data: threadImages } = await supabase
-    .from('generated_images')
-    .select('*')
-    .eq('thread_id', threadId)
-    .order('created_at', { ascending: true })
+    if (usageLogs && usageLogs.length > 0) {
+      const totalCost = usageLogs.reduce((sum, log) => sum + (log.estimated_cost || 0), 0)
+      setThreadTotalCost(totalCost)
+      console.log(`💰 Thread total cost: $${totalCost.toFixed(2)}`)
+    }
 
-  const imageMap = new Map()
-  if (threadImages) {
-    threadImages.forEach(img => {
+    const { data: threadMessages, error: messagesError } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('thread_id', threadId) // ✅ Use parameter, not state
+      .order('created_at', { ascending: true })
+
+    if (messagesError) {
+      console.error('❌ Error loading messages:', messagesError)
+      return
+    }
+
+    console.log(`📨 Thread ${threadId}: Found ${threadMessages?.length || 0} messages`)
+
+    // ✅ Load images for THIS specific thread
+    const { data: threadImages, error: imagesError } = await supabase
+      .from('generated_images')
+      .select('*')
+      .eq('thread_id', threadId)
+      .order('created_at', { ascending: true })
+
+    if (imagesError) {
+      console.error('❌ Error loading images:', imagesError)
+    }
+
+    console.log(`🖼️ Thread ${threadId}: Found ${threadImages?.length || 0} images`)
+
+    // Create image lookup map
+    const imageMap = new Map()
+    threadImages?.forEach(img => {
       imageMap.set(img.image_url, img)
+      console.log(`  - Image: ${img.prompt?.substring(0, 50)}...`)
     })
-    setImages(threadImages) // Store for sidebar if needed
-  }
 
-  // ✅ Load all thread messages (including image references)
-  const { data: threadMessages } = await supabase
-    .from('messages')
-    .select('*')
-    .eq('thread_id', threadId)
-    .order('created_at', { ascending: true })
+    if (!threadMessages || threadMessages.length === 0) {
+      console.log('ℹ️ No messages in this thread')
+      return
+    }
 
-  if (threadMessages) {
-    const formattedMessages: ChatMessage[] = []
+    // ✅ Format messages
+    const formattedMessages: ChatMessage[] = threadMessages.map((msg, idx) => {
+      const content = msg.content || ''
 
-    threadMessages.forEach(msg => {
+      console.log(`  Message ${idx + 1}: ${msg.role} - ${content.substring(0, 50)}...`)
+
       // Check if this is an image URL
-      if (msg.content && typeof msg.content === 'string' && msg.content.startsWith('http')) {
-        // This is an image message
-        const imageData = imageMap.get(msg.content)
-        formattedMessages.push({
+      if (content.startsWith('http')) {
+        const imageData = imageMap.get(content)
+        return {
           id: msg.id,
-          role: msg.role,
-          content: imageData?.prompt || 'Image',
-          type: 'image',
-          imageUrl: msg.content
-        })
-      } else {
-        // Regular text message
-        formattedMessages.push({
-          id: msg.id,
-          role: msg.role,
-          content: msg.content,
-          type: 'text'
-        })
+          role: msg.role as 'user' | 'assistant',
+          content: imageData?.prompt,
+          type: 'image' as const,
+          imageUrl: content
+        }
+      }
+
+      // Text message
+      return {
+        id: msg.id,
+        role: msg.role as 'user' | 'assistant',
+        content: content,
+        type: 'text' as const
       }
     })
 
     setMessages(formattedMessages)
-    console.log(`✅ Loaded ${formattedMessages.length} messages for thread ${threadId}`)
+    console.log(`✅ Loaded ${formattedMessages.length} messages`)
+    console.log(`   - ${formattedMessages.filter(m => m.type === 'image').length} images`)
+    console.log(`   - ${formattedMessages.filter(m => m.type === 'text').length} text messages`)
+    console.log('===================')
+
+  } catch (error) {
+    console.error('❌ Error in switchThread:', error)
   }
 }
-  return (
+return (
     <div className="flex h-screen bg-[#f7f5ef]">
       <ImageLightbox />
       {/* Sidebar */}
@@ -609,7 +677,10 @@ const switchThread = async (threadId: string) => {
                       ) : (
                           <div className="relative">
                             <div
-                                onClick={() => switchThread(thread.id)}
+                                onClick={() => {
+                                  console.log('🖱️ Clicked thread:', thread.id, thread.title) // ✅ Debug log
+                                  switchThread(thread.id)
+                                }}
                                 className={`w-full cursor-pointer px-3 py-2 rounded-lg text-[13px] transition-colors ${
                                     currentThreadId === thread.id ? 'bg-[#e8e6df] text-[#2d2d2d]' : 'text-[#6b6b6b] hover:bg-[#f5f3ed]'
                                 }`}
@@ -740,8 +811,19 @@ const switchThread = async (threadId: string) => {
                             <div className="w-[600px] relative group">
                               <div className="bg-white border border-[#e0ddd4] rounded-2xl overflow-hidden">
                                 <div
-                                    className="relative bg-[#f0eee8] w-full cursor-pointer"
-                                    style={{aspectRatio: '16/9'}}
+                                    className="relative bg-[#f0eee8] w-full cursor-pointer overflow-hidden"
+                                    style={{
+                                      aspectRatio: msg.aspectRatio
+                                          ? (msg.aspectRatio === 'square_hd' ? '1/1'
+                                              : msg.aspectRatio === 'portrait_16_9' ? '9/16'
+                                                  : msg.aspectRatio === 'landscape_16_9' ? '16/9'
+                                                      : msg.aspectRatio === 'landscape_21_9' ? '21/9'
+                                                          : msg.aspectRatio === 'landscape_4_3' ? '4/3'
+                                                              : msg.aspectRatio === 'portrait_4_3' ? '3/4'
+                                                                  : '16/9')
+                                          : '16/9',
+                                      minHeight: '300px'
+                                    }}
                                     onClick={() => setLightboxImage(msg.imageUrl!)}
                                 >
                                   <Image
@@ -750,6 +832,7 @@ const switchThread = async (threadId: string) => {
                                       fill
                                       className="object-contain"
                                       sizes="600px"
+                                      priority
                                   />
 
                                   {/* ✅ Download & Delete Icons - Top Right */}
@@ -892,7 +975,13 @@ const switchThread = async (threadId: string) => {
                     className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e0ddd4] rounded-xl text-[13px] text-[#2d2d2d] hover:border-[#d97757] transition-all"
                     onClick={() => setSizeDropdownOpen(!sizeDropdownOpen)}
                 >
-                  🖼️ {imageSize.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  🖼️ {imageSize === 'square_hd' ? 'Square HD (1:1)'
+                    : imageSize === 'portrait_16_9' ? 'Portrait (9:16)'
+                        : imageSize === 'landscape_16_9' ? 'Landscape (16:9)'
+                            : imageSize === 'landscape_21_9' ? 'Ultra Wide (21:9)'
+                                : imageSize === 'landscape_4_3' ? 'Landscape (4:3)'
+                                    : imageSize === 'portrait_4_3' ? 'Portrait (3:4)'
+                                        : 'Square HD (1:1)'} {/* ✅ Add default fallback */}
                   <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none">
                     <path d="M5 8l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                   </svg>
@@ -925,9 +1014,10 @@ const switchThread = async (threadId: string) => {
 
               {/* Cost Indicator */}
               <div className="ml-auto flex items-center gap-2 px-4 py-2 bg-[#f7f5ef] rounded-xl">
-                <span className="text-[13px] text-[#8b8b8b]">Cost:</span>
-                <span className="text-[13px] font-semibold text-[#d97757]">${(0.06 * numImages).toFixed(2)}</span>
+                <span className="text-[13px] text-[#8b8b8b]">Thread Cost:</span>
+                <span className="text-[13px] font-semibold text-[#d97757]">${threadTotalCost.toFixed(2)}</span>
               </div>
+
             </div>
 
             {/* Prompt Input */}
