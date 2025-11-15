@@ -37,9 +37,9 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
   const [images, setImages] = useState<GeneratedImage[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [quality, setQuality] = useState('BALANCED')
-  const [model, setModel] = useState('Ideogram')
+  const [currentThreadTitle, setCurrentThreadTitle] = useState("New Chat")
   const [numImages, setNumImages] = useState(1)
-  const [imageSize, setImageSize] = useState('landscape_16_9')
+  const [imageSize, setImageSize] = useState('square_hd')
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('imageGenSidebarOpen')
@@ -48,16 +48,19 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
     return true
   })
   const [qualityDropdownOpen, setQualityDropdownOpen] = useState(false)
-  const [modelDropdownOpen, setModelDropdownOpen] = useState(false)
   const [numImagesDropdownOpen, setNumImagesDropdownOpen] = useState(false)
   const [sizeDropdownOpen, setSizeDropdownOpen] = useState(false)
   const [userDropdownOpen, setUserDropdownOpen] = useState(false)
   const [selectedImage, setSelectedImage] = useState<GeneratedImage | null>(null)
   const [userName, setUserName] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
-
+    const [threads, setThreads] = useState<any[]>([])
+    const [currentThreadId, setCurrentThreadId] = useState<string | null>(null)
+    const [showThreadMenu, setShowThreadMenu] = useState(false)
+    const [editingThreadId, setEditingThreadId] = useState<string | null>(null)
+    const [editingThreadName, setEditingThreadName] = useState('')
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null)
   const qualityDropdownRef = useRef<HTMLDivElement>(null)
-  const modelDropdownRef = useRef<HTMLDivElement>(null)
   const numImagesDropdownRef = useRef<HTMLDivElement>(null)
   const sizeDropdownRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -75,7 +78,6 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
 
     // ✅ Close all selector dropdowns
     if (qualityDropdownRef.current && !qualityDropdownRef.current.contains(event.target as Node)) setQualityDropdownOpen(false)
-    if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) setModelDropdownOpen(false)
     if (numImagesDropdownRef.current && !numImagesDropdownRef.current.contains(event.target as Node)) setNumImagesDropdownOpen(false)
     if (sizeDropdownRef.current && !sizeDropdownRef.current.contains(event.target as Node)) setSizeDropdownOpen(false)
   }
@@ -106,6 +108,16 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
   }, [prompt])
 
   useEffect(() => {
+  loadThreads()
+}, [projectId, userId])
+
+  useEffect(() => {
+  loadImages()
+}, [currentThreadId])
+
+  useEffect(() => {
+  if (!currentThreadId) return
+
   const channel = supabase
     .channel('generated-images-changes')
     .on(
@@ -114,15 +126,16 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
         event: 'INSERT',
         schema: 'public',
         table: 'generated_images',
-        filter: `user_id=eq.${userId}` // ✅ Only listen to current user's images
+        filter: `thread_id=eq.${currentThreadId}` // ✅ Only current thread
       },
       (payload) => {
         const newImage = payload.new as GeneratedImage
-        // Only update if not already in the list (avoid duplicates)
-        setImages(prev => {
-          const exists = prev.some(img => img.id === newImage.id)
-          return exists ? prev : [newImage, ...prev]
-        })
+        if (newImage?.image_url) { // ✅ Validate image_url exists
+          setImages(prev => {
+            const exists = prev.some(img => img.id === newImage.id)
+            return exists ? prev : [newImage, ...prev]
+          })
+        }
       }
     )
     .subscribe()
@@ -130,14 +143,19 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
   return () => {
     supabase.removeChannel(channel)
   }
-}, [projectId, userId, supabase]) // ✅ Add userId to dependencies
+}, [currentThreadId, supabase])
 
   const loadImages = async () => {
+  if (!currentThreadId) {
+    setImages([])
+    return
+  }
+
   const { data } = await supabase
     .from('generated_images')
     .select('*')
-    .eq('user_id', userId) // ✅ Filter by current user only
-    .eq('project_id', projectId)
+    .eq('user_id', userId)
+    .eq('thread_id', currentThreadId) // ✅ Filter by current thread
     .order('created_at', { ascending: false })
     .limit(50)
 
@@ -146,6 +164,53 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
   }
 }
 
+
+    const ImageLightbox = () => {
+      if (!lightboxImage) return null
+
+      return (
+        <div
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
+          onClick={() => setLightboxImage(null)}
+        >
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              setLightboxImage(null)
+            }}
+            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              downloadImage(lightboxImage, `image-${Date.now()}.png`)
+            }}
+            className="absolute top-4 right-20 p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+            title="Download"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+              <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+          </button>
+
+          <div className="relative max-w-7xl max-h-[90vh]">
+            <Image
+              src={lightboxImage}
+              alt="Expanded view"
+              width={1920}
+              height={1080}
+              className="object-contain max-h-[90vh] w-auto"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )
+    }
   const generateImage = async () => {
   if (!prompt.trim()) return
 
@@ -165,19 +230,20 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
 
   try {
     const response = await fetch('/api/generate-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: currentPrompt,
-        userId,
-        projectId,
-        projectSlug,
-        model,
-        quality,
-        numImages,
-        imageSize
-      })
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: currentPrompt,
+      userId,
+      projectId,
+      projectSlug,
+      model: 'Ideogram',
+      quality,
+      numImages,
+      imageSize,
+      threadId: currentThreadId // ✅ Pass thread ID
     })
+  })
 
     const data = await response.json()
 
@@ -193,26 +259,40 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
         content: data.message,
         type: 'text'
       }])
-    } else if (data.imageUrl) {
-      // ✅ Image generated - add to chat immediately
-      const newImageMsg: ChatMessage = {
-        id: `img-${Date.now()}`,
-        role: 'assistant',
-        content: 'Image generated successfully!',
-        type: 'image',
-        imageUrl: data.imageUrl
-      }
-      setMessages(prev => [...prev, newImageMsg])
+    }  else if (data.imageUrls && Array.isArray(data.imageUrls)) {
+      // ✅ Multiple images generated
+      data.imageUrls.forEach((imageUrl: string, index: number) => {
+        const newImageMsg: ChatMessage = {
+          id: `img-${Date.now()}-${index}`,
+          role: 'assistant',
+          content: currentPrompt, // ✅ Use original prompt instead of success message
+          type: 'image',
+          imageUrl: imageUrl
+        }
+        setMessages(prev => [...prev, newImageMsg])
 
-      // ✅ Add to sidebar immediately
+        // Add to sidebar
+        const newImage: GeneratedImage = {
+          id: data.imageIds?.[index] || `temp-${Date.now()}-${index}`,
+          prompt: currentPrompt,
+          image_url: imageUrl,
+          style: 'Ideogram',
+          aspect_ratio: imageSize,
+          created_at: new Date().toISOString()
+        }
+        setImages(prev => [newImage, ...prev])
+      })
+
+
+
       const newImage: GeneratedImage = {
-        id: data.imageId || `temp-${Date.now()}`,
-        prompt: currentPrompt,
-        image_url: data.imageUrl,
-        style: model,
-        aspect_ratio: imageSize,
-        created_at: new Date().toISOString()
-      }
+      id: data.imageId || `temp-${Date.now()}`,
+      prompt: currentPrompt,
+      image_url: data.imageUrl,
+      style: 'Ideogram', // ✅ Add this line
+      aspect_ratio: imageSize,
+      created_at: new Date().toISOString()
+    }
       setImages(prev => [newImage, ...prev])
     }
   } catch (error: any) {
@@ -269,14 +349,102 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
   const calculateCost = () => {
   const pricing: Record<string, Record<string, number>> = {
     'Ideogram': { 'TURBO': 0.03, 'BALANCED': 0.06, 'QUALITY': 0.09 },
-    'Flux': { 'flux-1': 0.025, 'flux-1.1-pro': 0.04, 'flux-1.1-pro-ultra': 0.06 }
   }
-  const cost = pricing[model]?.[quality] || 0.06
+  const cost = pricing['Ideogram']?.[quality] || 0.06
   return (cost * numImages).toFixed(2)
 }
+ const loadThreads = async () => {
+  const { data } = await supabase
+    .from('chat_threads')
+    .select('*')
+    .eq('project_id', projectId)
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false })
+    .limit(20)
 
+  if (data) {
+    setThreads(data)
+  }
+}
+
+const createNewThread = async () => {
+  const { data: newThread } = await supabase
+    .from('chat_threads')
+    .insert({
+      user_id: userId,
+      project_id: projectId,
+      title: 'New Image Chat',
+      model: 'Ideogram'
+    })
+    .select()
+    .single()
+
+  if (newThread) {
+    setCurrentThreadId(newThread.id)
+    setMessages([])
+    setImages([])
+    loadThreads()
+  }
+}
+const renameThread = async (threadId: string, newName: string) => {
+  await supabase
+    .from('chat_threads')
+    .update({ title: newName })
+    .eq('id', threadId)
+
+  loadThreads()
+  setEditingThreadId(null)
+}
+
+const deleteThread = async (threadId: string) => {
+  if (!confirm('Delete this chat?')) return
+
+  await supabase.from('chat_threads').delete().eq('id', threadId)
+
+  if (currentThreadId === threadId) {
+    setCurrentThreadId(null)
+    setMessages([])
+  }
+  loadThreads()
+}
+
+const switchThread = async (threadId: string) => {
+  setCurrentThreadId(threadId)
+  setMessages([])
+
+  // Load thread messages
+  const { data: threadMessages } = await supabase
+    .from('messages')
+    .select('*')
+    .eq('thread_id', threadId)
+    .order('created_at', { ascending: true })
+
+  if (threadMessages) {
+    const formattedMessages = threadMessages.map(msg => ({
+      id: msg.id,
+      role: msg.role,
+      content: msg.content,
+      type: msg.content.startsWith('http') ? 'image' : 'text',
+      imageUrl: msg.content.startsWith('http') ? msg.content : undefined
+    }))
+    setMessages(formattedMessages as ChatMessage[])
+  }
+
+  // Load thread images
+  const { data: threadImages } = await supabase
+    .from('generated_images')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false })
+
+  if (threadImages) {
+    setImages(threadImages)
+  }
+}
   return (
     <div className="flex h-screen bg-[#f7f5ef]">
+      <ImageLightbox />
       {/* Sidebar */}
       <aside className={`${sidebarOpen ? 'w-[260px]' : 'w-[60px]'} bg-[#f7f5ef] border-r border-[#e0ddd4] flex flex-col transition-all duration-300 flex-shrink-0`}>
         {!sidebarOpen && (
@@ -347,13 +515,99 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
                 </svg>
                 All Projects
               </button>
+
+               {/* ✅ New Chat Button */}
+                <button
+                  onClick={createNewThread}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-[#d97757] hover:bg-[#c86545] text-white transition-colors text-[13px] font-medium"
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  </svg>
+                  New Image Chat
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-2">
+                {/* ✅ Thread List */}
+                {threads.length > 0 && (
+                  <div className="text-[11px] text-[#8b8b8b] px-3 py-2 font-medium">IMAGE CHATS</div>
+                )}
+                {threads.map(thread => (
+                <div key={thread.id} className="mb-1 group relative">
+                  {editingThreadId === thread.id ? (
+                    <input
+                      type="text"
+                      value={editingThreadName}
+                      onChange={(e) => setEditingThreadName(e.target.value)}
+                      onBlur={() => renameThread(thread.id, editingThreadName)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') renameThread(thread.id, editingThreadName)
+                        if (e.key === 'Escape') setEditingThreadId(null)
+                      }}
+                      className="w-full px-3 py-2 text-[13px] border border-[#d97757] rounded-lg outline-none"
+                      autoFocus
+                    />
+                  ) : (
+                    <div className="relative">
+                      <div
+                        onClick={() => switchThread(thread.id)}
+                        className={`w-full cursor-pointer px-3 py-2 rounded-lg text-[13px] transition-colors ${
+                          currentThreadId === thread.id ? 'bg-[#e8e6df] text-[#2d2d2d]' : 'text-[#6b6b6b] hover:bg-[#f5f3ed]'
+                        }`}
+                      >
+                        <span className="truncate block pr-12">{thread.title}</span>
+                      </div>
+
+                      <div
+                        className="absolute right-2 top-2 flex gap-1 opacity-0 group-hover:opacity-100"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setEditingThreadId(thread.id)
+                            setEditingThreadName(thread.title)
+                          }}
+                          className="p-1 hover:bg-[#d97757] hover:text-white rounded transition-colors"
+                          type="button"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor">
+                            <path d="M8 1l3 3L5 10H2v-3L8 1z" strokeWidth="1.5"/>
+                          </svg>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            deleteThread(thread.id)
+                          }}
+                          className="p-1 hover:bg-red-500 hover:text-white rounded transition-colors"
+                          type="button"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor">
+                            <path d="M2 3h8M4 3V2h4v1M5 5v4M7 5v4" strokeWidth="1.5" strokeLinecap="round"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
 
             <div className="flex-1 overflow-y-auto px-2">
-              {images.length > 0 && (
-                <div className="text-[11px] text-[#8b8b8b] px-3 py-2 font-medium">RECENTLY GENERATED</div>
-              )}
-              {images.filter(img => img.image_url.startsWith('http')).map(image => (
+              {images.length > 0 && currentThreadId && (
+              <div className="text-[11px] text-[#8b8b8b] px-3 py-2 font-medium mt-4">RECENTLY GENERATED</div>
+            )}
+            {images
+              .filter(img => {
+                // Safety checks
+                if (!img?.image_url || typeof img.image_url !== 'string') return false;
+                if (!img.image_url.startsWith('http')) return false;
+                // ✅ This is already filtered by thread_id in loadImages()
+                return true;
+              })
+              .map(image => (
               <div key={image.id} className="relative group mb-2">
                 <div
                   onClick={() => {
@@ -489,7 +743,11 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
                         ) : (
                             <div className="w-[600px] relative group">
                               <div className="bg-white border border-[#e0ddd4] rounded-2xl overflow-hidden">
-                                <div className="relative bg-[#f0eee8] w-full" style={{aspectRatio: '16/9'}}>
+                                <div
+                                    className="relative bg-[#f0eee8] w-full cursor-pointer"
+                                    style={{aspectRatio: '16/9'}}
+                                    onClick={() => setLightboxImage(msg.imageUrl!)}
+                                >
                                   <Image
                                       src={msg.imageUrl!}
                                       alt="Generated"
@@ -566,35 +824,6 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
           <div className="max-w-[800px] mx-auto">
             {/* Controls */}
             <div className="flex gap-2 mb-3 flex-wrap">
-              {/* Model Selector */}
-              <div className="relative" ref={modelDropdownRef}>
-                <button
-                    className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e0ddd4] rounded-xl text-[13px] text-[#2d2d2d] hover:border-[#d97757] transition-all"
-                    onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-                >
-                  🎨 {model}
-                  <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none">
-                    <path d="M5 8l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                  </svg>
-                </button>
-                {modelDropdownOpen && (
-                    <div
-                        className="absolute bottom-full mb-2 bg-white border border-[#e0ddd4] rounded-xl shadow-lg w-44 z-50">
-                      {["Ideogram", "Flux"].map((opt) => (
-                          <button
-                              key={opt}
-                              onClick={() => {
-                                setModel(opt);
-                                setModelDropdownOpen(false);
-                              }}
-                              className={`block w-full text-left px-4 py-2 text-[13px] hover:bg-[#f7f5ef] first:rounded-t-xl last:rounded-b-xl ${model === opt ? "text-[#d97757] font-medium" : ""}`}
-                          >
-                            {opt}
-                          </button>
-                      ))}
-                    </div>
-                )}
-              </div>
 
               {/* Quality Selector */}
               <div className="relative" ref={qualityDropdownRef}>
@@ -611,22 +840,22 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
                     <div
                         className="absolute bottom-full mb-2 bg-white border border-[#e0ddd4] rounded-xl shadow-lg w-52 z-50">
                       {[
-                        {value: 'TURBO', label: 'Fast (Cheapest)', cost: model === 'Ideogram' ? '$0.03' : '$0.025'},
-                        {value: 'BALANCED', label: 'Balanced', cost: model === 'Ideogram' ? '$0.06' : '$0.04'},
-                        {value: 'QUALITY', label: 'Quality (Best)', cost: model === 'Ideogram' ? '$0.09' : '$0.06'}
-                      ].map((opt) => (
-                          <button
-                              key={opt.value}
-                              onClick={() => {
-                                setQuality(opt.value);
-                                setQualityDropdownOpen(false);
-                              }}
-                              className={`block w-full text-left px-4 py-2 text-[13px] hover:bg-[#f7f5ef] first:rounded-t-xl last:rounded-b-xl ${quality === opt.value ? "text-[#d97757] font-medium" : ""}`}
-                          >
-                            <div>{opt.label}</div>
-                            <div className="text-[11px] text-[#8b8b8b]">{opt.cost}/image</div>
-                          </button>
-                      ))}
+                      { value: 'TURBO', label: 'Fast (Cheapest)', cost: '$0.03' },
+                      { value: 'BALANCED', label: 'Balanced', cost: '$0.06' },
+                      { value: 'QUALITY', label: 'Quality (Best)', cost: '$0.09' }
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => {
+                          setQuality(opt.value);
+                          setQualityDropdownOpen(false);
+                        }}
+                        className={`block w-full text-left px-4 py-2 text-[13px] hover:bg-[#f7f5ef] first:rounded-t-xl last:rounded-b-xl ${quality === opt.value ? "text-[#d97757] font-medium" : ""}`}
+                      >
+                        <div>{opt.label}</div>
+                        <div className="text-[11px] text-[#8b8b8b]">{opt.cost}/image</div>
+                      </button>
+                    ))}
                     </div>
                 )}
               </div>
@@ -701,7 +930,7 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
               {/* Cost Indicator */}
               <div className="ml-auto flex items-center gap-2 px-4 py-2 bg-[#f7f5ef] rounded-xl">
                 <span className="text-[13px] text-[#8b8b8b]">Cost:</span>
-                <span className="text-[13px] font-semibold text-[#d97757]">${calculateCost()}</span>
+                <span className="text-[13px] font-semibold text-[#d97757]">${(0.06 * numImages).toFixed(2)}</span>
               </div>
             </div>
 

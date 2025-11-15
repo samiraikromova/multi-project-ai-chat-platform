@@ -23,6 +23,7 @@ function calculateImageCost(model: string, quality: string, numImages: number): 
   const cost = pricing[model]?.[quality] || 0.06;
   return cost * numImages;
 }
+
 export async function POST(req: NextRequest) {
   try {
     const {
@@ -30,20 +31,22 @@ export async function POST(req: NextRequest) {
       userId,
       projectId,
       projectSlug,
-      model,
       quality,
       numImages,
-      imageSize
+      imageSize,
+      threadId
     } = await req.json();
 
-    // Check credits
+    console.log('📸 Image generation request:', { userId, quality, numImages, imageSize });
+
+    // Check credits FIRST
     const { data: user } = await supabase
       .from("users")
       .select("credits")
       .eq("id", userId)
       .single();
 
-    const estimatedCost = calculateImageCost(model, quality, numImages);
+    const estimatedCost = calculateImageCost('Ideogram', quality, numImages);
 
     if (!user || Number(user.credits) < estimatedCost) {
       return NextResponse.json(
@@ -52,7 +55,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Call n8n webhook
     const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL || 'https://n8n.leveragedcreator.ai/webhook/cb4-chat';
 
     const n8nPayload = {
@@ -60,62 +62,120 @@ export async function POST(req: NextRequest) {
       userId,
       projectId,
       projectSlug,
-      model,
+      model: 'Ideogram',
       quality,
       numImages,
       imageSize,
       userMessage: message,
-      messageContent: message
+      messageContent: message,
+      threadId
     };
 
-    const n8nResponse = await fetch(n8nWebhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(n8nPayload),
-    });
+    console.log('🔄 Calling N8N for image generation...');
 
-    if (!n8nResponse.ok) {
-      throw new Error('N8N webhook failed');
+    let n8nResponse;
+    let result;
+
+    try {
+      n8nResponse = await fetch(n8nWebhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(n8nPayload),
+        signal: AbortSignal.timeout(180000)
+      });
+
+      if (!n8nResponse.ok) {
+        const errorText = await n8nResponse.text();
+        console.error('❌ N8N webhook failed:', errorText);
+        throw new Error(`N8N returned ${n8nResponse.status}: ${errorText}`);
+      }
+
+      result = await n8nResponse.json();
+      console.log('✅ N8N response received:', result);
+
+    } catch (fetchError: any) {
+      console.error('❌ N8N fetch error:', fetchError);
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to connect to image generation service',
+        details: fetchError.message
+      }, { status: 500 });
     }
 
-    const result = await n8nResponse.json();
+    // Validate the response structure
+    if (!result || (!result.output && !result.reply)) {
+      console.error('❌ Invalid N8N response structure:', result);
+      return NextResponse.json({
+        success: false,
+        error: 'Invalid response from image generation service'
+      }, { status: 500 });
+    }
+
     const output = result.output || result.reply;
 
-    // Check if this is a text response (clarification) or image URL
-    const isImageUrl = typeof output === 'string' && output.startsWith('http');
+    // Check for error messages
+    if (typeof output === 'string' && (output === 'No response' || output.includes('Error:') || output.includes('error'))) {
+      console.error('❌ N8N returned error:', output);
+      return NextResponse.json({
+        success: false,
+        error: output
+      }, { status: 500 });
+    }
+
+    // Check if this is a clarification message (text, not image)
+    const isImageUrl = (typeof output === 'string' && output.startsWith('http')) ||
+                       (Array.isArray(output) && output.length > 0 && output[0].startsWith('http'));
 
     if (!isImageUrl) {
-      // This is a text response (clarification needed)
+      console.log('💬 Clarification message received');
       return NextResponse.json({
         success: true,
         isTextResponse: true,
         message: output,
-        cost: result.usage?.cost || 0
+        cost: 0
       });
     }
 
-    // This is an image URL
-    const imageUrl = output;
+    // ✅ SUCCESS - We have valid image URL(s)
+    const imageUrls = Array.isArray(output) ? output : [output];
+    console.log(`✅ Generated ${imageUrls.length} image(s)`);
 
-    // Store in database
-    const { data: savedImage } = await supabase
-      .from("generated_images")
-      .insert({
-        user_id: userId,
-        project_id: projectId,
-        prompt: message,
-        image_url: imageUrl,
-        style: model,
-        aspect_ratio: imageSize,
-      })
-      .select()
-      .single();
+    const savedImages = [];
 
-    // Deduct credits
+    // Store images in database
+    // Store images in database
+for (const imageUrl of imageUrls) {
+  console.log('💾 Saving image with thread_id:', threadId); // ✅ Debug log
+
+  const { data: savedImage, error: saveError } = await supabase
+    .from("generated_images")
+    .insert({
+      user_id: userId,
+      project_id: projectId,
+      prompt: message,
+      image_url: imageUrl,
+      style: 'Ideogram',
+      aspect_ratio: imageSize,
+      thread_id: threadId // ✅ Make sure this is not null
+    })
+    .select()
+    .single();
+
+  if (saveError) {
+    console.error('⚠️ Failed to save image:', saveError);
+  } else if (savedImage) {
+    console.log('✅ Image saved with ID:', savedImage.id);
+    savedImages.push(savedImage);
+  }
+}
+
+    // ✅ ONLY NOW deduct credits
     const actualCost = result.usage?.cost || estimatedCost;
-    const newCredits = Number((Number(user.credits) - actualCost).toFixed(2)); // ✅ Round to 2 decimals
+    const newCredits = Number((Number(user.credits) - actualCost).toFixed(2));
 
-    await supabase
+    console.log(`💰 Deducting ${actualCost} credits. New balance: ${newCredits}`);
+
+    const { error: creditError } = await supabase
       .from("users")
       .update({
         credits: newCredits,
@@ -123,27 +183,41 @@ export async function POST(req: NextRequest) {
       })
       .eq("id", userId);
 
+    if (creditError) {
+      console.error('⚠️ Failed to deduct credits:', creditError);
+    }
+
     // Log usage
     await supabase.from("usage_logs").insert({
       user_id: userId,
-      model: `${model} - ${quality}`,
+      model: `Ideogram - ${quality}`,
       tokens_input: 0,
       tokens_output: 0,
       estimated_cost: actualCost,
       project_id: projectId,
-      metadata: { type: "image_generation", quality, numImages, imageSize },
+      metadata: {
+        type: "image_generation",
+        quality,
+        numImages: imageUrls.length,
+        imageSize,
+        thread_id: threadId
+      },
     });
 
     return NextResponse.json({
       success: true,
       isTextResponse: false,
-      imageUrl,
-      imageId: savedImage?.id,
+      imageUrls,
+      imageIds: savedImages.map(img => img.id),
       cost: actualCost,
       remainingCredits: newCredits,
     });
+
   } catch (error: any) {
-    console.error("Image generation error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("❌ Image generation error:", error);
+    return NextResponse.json({
+      success: false,
+      error: error.message || 'Internal server error'
+    }, { status: 500 });
   }
 }

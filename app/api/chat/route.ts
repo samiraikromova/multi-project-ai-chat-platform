@@ -133,10 +133,11 @@ export async function POST(req: NextRequest) {
     console.log('🔄 Calling N8N webhook...')
 
     const n8nResponse = await fetch(n8nWebhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(n8nPayload),
-    })
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(n8nPayload),
+    signal: AbortSignal.timeout(180000)
+  })
 
     if (!n8nResponse.ok) {
       const errorText = await n8nResponse.text()

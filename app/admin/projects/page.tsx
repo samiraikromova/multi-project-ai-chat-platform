@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation"
 export default function AdminProjects() {
   const [projects, setProjects] = useState<any[]>([])
   const [showNewModal, setShowNewModal] = useState(false)
+  const [editingProject, setEditingProject] = useState<any | null>(null)
+  const [showEditModal, setShowEditModal] = useState(false)
   const [newProject, setNewProject] = useState({
     name: '',
     slug: '',
@@ -29,6 +31,38 @@ export default function AdminProjects() {
 
   useEffect(() => { load() }, [])
 
+  const startEdit = (project: any) => {
+    setEditingProject({...project})
+    setShowEditModal(true)
+  }
+
+  const updateProject = async () => {
+    if (!editingProject?.name || !editingProject?.slug) {
+      alert('Name and slug are required')
+      return
+    }
+
+    const { error } = await supabase
+      .from('projects')
+      .update({
+        name: editingProject.name,
+        slug: editingProject.slug,
+        icon: editingProject.icon,
+        color: editingProject.color,
+        description: editingProject.description,
+        system_prompt: editingProject.system_prompt,
+        requires_tier2: editingProject.requires_tier2
+      })
+      .eq('id', editingProject.id)
+
+    if (error) {
+      alert('Error updating project: ' + error.message)
+    } else {
+      setShowEditModal(false)
+      setEditingProject(null)
+      load()
+    }
+  }
   const toggle = async (id: string, comingSoon: boolean) => {
     await supabase.from('projects').update({ coming_soon: comingSoon }).eq('id', id)
     load()
@@ -89,20 +123,22 @@ export default function AdminProjects() {
       </div>
 
       {projects.map(p => (
-        <div key={p.id} className="flex items-center gap-4 p-4 bg-white border rounded mb-2">
-          <span className="text-xl">{p.icon}</span>
-          <span className="flex-1">{p.name}</span>
-          {p.requires_tier2 && <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">Tier 2</span>}
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={p.coming_soon} onChange={(e) => toggle(p.id, e.target.checked)} />
-            Coming Soon
-          </label>
-          <button onClick={() => del(p.id)} className="text-red-600">Delete</button>
-        </div>
+          <div key={p.id} className="flex items-center gap-4 p-4 bg-white border rounded mb-2">
+            <span className="text-xl">{p.icon}</span>
+            <span className="flex-1">{p.name}</span>
+            {p.requires_tier2 &&
+                <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">Tier 2</span>}
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={p.coming_soon} onChange={(e) => toggle(p.id, e.target.checked)}/>
+              Coming Soon
+            </label>
+            <button onClick={() => startEdit(p)} className="text-blue-600 hover:underline">Edit</button>
+            <button onClick={() => del(p.id)} className="text-red-600">Delete</button>
+          </div>
       ))}
 
       {showNewModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-[500px]">
             <h2 className="text-xl font-bold mb-4">Create New Project</h2>
 
@@ -174,6 +210,79 @@ export default function AdminProjects() {
           </div>
         </div>
       )}
+      {showEditModal && editingProject && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6 w-[500px]">
+          <h2 className="text-xl font-bold mb-4">Edit Project</h2>
+
+          <input
+            type="text"
+            placeholder="Project Name"
+            className="w-full border p-2 rounded mb-3"
+            value={editingProject.name}
+            onChange={(e) => setEditingProject({...editingProject, name: e.target.value})}
+          />
+
+          <input
+            type="text"
+            placeholder="Slug"
+            className="w-full border p-2 rounded mb-3"
+            value={editingProject.slug}
+            onChange={(e) => setEditingProject({...editingProject, slug: e.target.value.toLowerCase().replace(/\s+/g, '-')})}
+          />
+
+          <input
+            type="text"
+            placeholder="Icon (emoji)"
+            className="w-full border p-2 rounded mb-3"
+            value={editingProject.icon}
+            onChange={(e) => setEditingProject({...editingProject, icon: e.target.value})}
+          />
+
+          <input
+            type="text"
+            placeholder="Color"
+            className="w-full border p-2 rounded mb-3"
+            value={editingProject.color}
+            onChange={(e) => setEditingProject({...editingProject, color: e.target.value})}
+          />
+
+          <textarea
+            placeholder="Description"
+            className="w-full border p-2 rounded mb-3"
+            rows={2}
+            value={editingProject.description || ''}
+            onChange={(e) => setEditingProject({...editingProject, description: e.target.value})}
+          />
+
+          <textarea
+            placeholder="System Prompt"
+            className="w-full border p-2 rounded mb-3"
+            rows={3}
+            value={editingProject.system_prompt || ''}
+            onChange={(e) => setEditingProject({...editingProject, system_prompt: e.target.value})}
+          />
+
+          <label className="flex items-center gap-2 mb-4">
+            <input
+              type="checkbox"
+              checked={editingProject.requires_tier2}
+              onChange={(e) => setEditingProject({...editingProject, requires_tier2: e.target.checked})}
+            />
+            <span className="text-sm">Requires Tier 2 subscription</span>
+          </label>
+
+          <div className="flex gap-3">
+            <button onClick={updateProject} className="flex-1 bg-[#d97757] text-white py-2 rounded">
+              Update
+            </button>
+            <button onClick={() => { setShowEditModal(false); setEditingProject(null); }} className="flex-1 border py-2 rounded">
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </div>
   )
 }
