@@ -126,15 +126,19 @@ export default function ImageGeneratorChat({ userId, projectId, projectSlug, pro
         event: 'INSERT',
         schema: 'public',
         table: 'generated_images',
-        filter: `thread_id=eq.${currentThreadId}` // ✅ Only current thread
+        filter: `thread_id=eq.${currentThreadId}`
       },
       (payload) => {
         const newImage = payload.new as GeneratedImage
-        if (newImage?.image_url) { // ✅ Validate image_url exists
-          setImages(prev => {
-            const exists = prev.some(img => img.id === newImage.id)
-            return exists ? prev : [newImage, ...prev]
-          })
+        if (newImage?.image_url) {
+          // ✅ Add to messages in real-time
+          setMessages(prev => [...prev, {
+            id: `img-realtime-${Date.now()}`,
+            role: 'assistant',
+            content: newImage.prompt,
+            type: 'image',
+            imageUrl: newImage.image_url
+          }])
         }
       }
     )
@@ -437,8 +441,26 @@ const deleteThread = async (threadId: string) => {
 const switchThread = async (threadId: string) => {
   setCurrentThreadId(threadId)
   setMessages([])
+  setImages([])
 
-  // Load thread messages
+  console.log('🔄 Switching to thread:', threadId)
+
+  // ✅ Load thread images first
+  const { data: threadImages } = await supabase
+    .from('generated_images')
+    .select('*')
+    .eq('thread_id', threadId)
+    .order('created_at', { ascending: true })
+
+  const imageMap = new Map()
+  if (threadImages) {
+    threadImages.forEach(img => {
+      imageMap.set(img.image_url, img)
+    })
+    setImages(threadImages) // Store for sidebar if needed
+  }
+
+  // ✅ Load all thread messages (including image references)
   const { data: threadMessages } = await supabase
     .from('messages')
     .select('*')
@@ -446,26 +468,33 @@ const switchThread = async (threadId: string) => {
     .order('created_at', { ascending: true })
 
   if (threadMessages) {
-    const formattedMessages = threadMessages.map(msg => ({
-      id: msg.id,
-      role: msg.role,
-      content: msg.content,
-      type: msg.content.startsWith('http') ? 'image' : 'text',
-      imageUrl: msg.content.startsWith('http') ? msg.content : undefined
-    }))
-    setMessages(formattedMessages as ChatMessage[])
-  }
+    const formattedMessages: ChatMessage[] = []
 
-  // Load thread images
-  const { data: threadImages } = await supabase
-    .from('generated_images')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('project_id', projectId)
-    .order('created_at', { ascending: false })
+    threadMessages.forEach(msg => {
+      // Check if this is an image URL
+      if (msg.content && typeof msg.content === 'string' && msg.content.startsWith('http')) {
+        // This is an image message
+        const imageData = imageMap.get(msg.content)
+        formattedMessages.push({
+          id: msg.id,
+          role: msg.role,
+          content: imageData?.prompt || 'Image',
+          type: 'image',
+          imageUrl: msg.content
+        })
+      } else {
+        // Regular text message
+        formattedMessages.push({
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          type: 'text'
+        })
+      }
+    })
 
-  if (threadImages) {
-    setImages(threadImages)
+    setMessages(formattedMessages)
+    console.log(`✅ Loaded ${formattedMessages.length} messages for thread ${threadId}`)
   }
 }
   return (
@@ -520,32 +549,35 @@ const switchThread = async (threadId: string) => {
         )}
 
         {sidebarOpen && (
-          <>
-            <div className="p-3 border-b border-[#e0ddd4] flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">🎨</span>
-                <h2 className="text-[15px] font-semibold text-[#2d2d2d]">Image Generator</h2>
+            <>
+              <div className="p-3 border-b border-[#e0ddd4] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">🎨</span>
+                  <h2 className="text-[15px] font-semibold text-[#2d2d2d]">Image Generator</h2>
+                </div>
+                <button onClick={() => setSidebarOpen(false)}
+                        className="p-1.5 hover:bg-[#e8e6df] rounded-lg transition-colors" title="Close sidebar">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
+                    <rect x="3" y="4" width="14" height="12" rx="1.5" strokeWidth="1.5"/>
+                    <line x1="12" y1="4" x2="12" y2="16" strokeWidth="1.5"/>
+                  </svg>
+                </button>
               </div>
-              <button onClick={() => setSidebarOpen(false)} className="p-1.5 hover:bg-[#e8e6df] rounded-lg transition-colors" title="Close sidebar">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
-                  <rect x="3" y="4" width="14" height="12" rx="1.5" strokeWidth="1.5"/>
-                  <line x1="12" y1="4" x2="12" y2="16" strokeWidth="1.5"/>
-                </svg>
-              </button>
-            </div>
 
-            <div className="p-3 space-y-2">
-              <button onClick={() => router.push('/dashboard')} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors text-[13px] text-[#6b6b6b]">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M14 8H2M6 4l-4 4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                All Projects
-              </button>
+              <div className="p-3 space-y-2">
+                <button onClick={() => router.push('/dashboard')}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors text-[13px] text-[#6b6b6b]">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M14 8H2M6 4l-4 4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
+                          strokeLinejoin="round"/>
+                  </svg>
+                  All Projects
+                </button>
 
-               {/* ✅ New Chat Button */}
+                {/* ✅ New Chat Button */}
                 <button
-                  onClick={createNewThread}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-[#d97757] hover:bg-[#c86545] text-white transition-colors text-[13px] font-medium"
+                    onClick={createNewThread}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-[#d97757] hover:bg-[#c86545] text-white transition-colors text-[13px] font-medium"
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -557,171 +589,109 @@ const switchThread = async (threadId: string) => {
               <div className="flex-1 overflow-y-auto px-2">
                 {/* ✅ Thread List */}
                 {threads.length > 0 && (
-                  <div className="text-[11px] text-[#8b8b8b] px-3 py-2 font-medium">IMAGE CHATS</div>
+                    <div className="text-[11px] text-[#8b8b8b] px-3 py-2 font-medium">IMAGE CHATS</div>
                 )}
                 {threads.map(thread => (
-                <div key={thread.id} className="mb-1 group relative">
-                  {editingThreadId === thread.id ? (
-                    <input
-                      type="text"
-                      value={editingThreadName}
-                      onChange={(e) => setEditingThreadName(e.target.value)}
-                      onBlur={() => renameThread(thread.id, editingThreadName)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') renameThread(thread.id, editingThreadName)
-                        if (e.key === 'Escape') setEditingThreadId(null)
-                      }}
-                      className="w-full px-3 py-2 text-[13px] border border-[#d97757] rounded-lg outline-none"
-                      autoFocus
-                    />
-                  ) : (
-                    <div className="relative">
-                      <div
-                        onClick={() => switchThread(thread.id)}
-                        className={`w-full cursor-pointer px-3 py-2 rounded-lg text-[13px] transition-colors ${
-                          currentThreadId === thread.id ? 'bg-[#e8e6df] text-[#2d2d2d]' : 'text-[#6b6b6b] hover:bg-[#f5f3ed]'
-                        }`}
-                      >
-                        <span className="truncate block pr-12">{thread.title}</span>
-                      </div>
+                    <div key={thread.id} className="mb-1 group relative">
+                      {editingThreadId === thread.id ? (
+                          <input
+                              type="text"
+                              value={editingThreadName}
+                              onChange={(e) => setEditingThreadName(e.target.value)}
+                              onBlur={() => renameThread(thread.id, editingThreadName)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') renameThread(thread.id, editingThreadName)
+                                if (e.key === 'Escape') setEditingThreadId(null)
+                              }}
+                              className="w-full px-3 py-2 text-[13px] border border-[#d97757] rounded-lg outline-none"
+                              autoFocus
+                          />
+                      ) : (
+                          <div className="relative">
+                            <div
+                                onClick={() => switchThread(thread.id)}
+                                className={`w-full cursor-pointer px-3 py-2 rounded-lg text-[13px] transition-colors ${
+                                    currentThreadId === thread.id ? 'bg-[#e8e6df] text-[#2d2d2d]' : 'text-[#6b6b6b] hover:bg-[#f5f3ed]'
+                                }`}
+                            >
+                              <span className="truncate block pr-12">{thread.title}</span>
+                            </div>
 
+                            <div
+                                className="absolute right-2 top-2 flex gap-1 opacity-0 group-hover:opacity-100"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setEditingThreadId(thread.id)
+                                    setEditingThreadName(thread.title)
+                                  }}
+                                  className="p-1 hover:bg-[#d97757] hover:text-white rounded transition-colors"
+                                  type="button"
+                              >
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor">
+                                  <path d="M8 1l3 3L5 10H2v-3L8 1z" strokeWidth="1.5"/>
+                                </svg>
+                              </button>
+                              <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    deleteThread(thread.id)
+                                  }}
+                                  className="p-1 hover:bg-red-500 hover:text-white rounded transition-colors"
+                                  type="button"
+                              >
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor">
+                                  <path d="M2 3h8M4 3V2h4v1M5 5v4M7 5v4" strokeWidth="1.5" strokeLinecap="round"/>
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                      )}
+                    </div>
+                ))}
+
+                {/* ✅ No Recently Generated section - removed! */}
+              </div>
+
+
+              <div className="border-t border-[#e0ddd4] p-3">
+                <div className="relative" ref={userDropdownRef}>
+                  <button onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors">
+                    <div
+                        className="w-9 h-9 rounded-full flex items-center justify-center text-white font-medium hover:brightness-110 transition bg-primary">
+                      {userName ? userName.charAt(0).toUpperCase() : (userEmail?.charAt(0).toUpperCase() || 'U')}
+                    </div>
+                    <div className="flex-1 text-left min-w-0">
                       <div
-                        className="absolute right-2 top-2 flex gap-1 opacity-0 group-hover:opacity-100"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setEditingThreadId(thread.id)
-                            setEditingThreadName(thread.title)
-                          }}
-                          className="p-1 hover:bg-[#d97757] hover:text-white rounded transition-colors"
-                          type="button"
-                        >
-                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor">
-                            <path d="M8 1l3 3L5 10H2v-3L8 1z" strokeWidth="1.5"/>
-                          </svg>
+                          className="text-[13px] text-[#2d2d2d] truncate font-medium">{userName || userEmail || 'User'}</div>
+                    </div>
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="flex-shrink-0">
+                      <path d="M6 8L3 5h6L6 8z"/>
+                    </svg>
+                  </button>
+                  {userDropdownOpen && (
+                      <div
+                          className="absolute bottom-full left-0 mb-2 w-full bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1">
+                        <div className="px-3 py-2 border-b border-[#e0ddd4]">
+                          <div className="text-[13px] text-[#2d2d2d] font-medium truncate">{userName || 'User'}</div>
+                          <div className="text-[11px] text-[#8b8b8b] truncate">{userEmail}</div>
+                        </div>
+                        <button onClick={() => router.push('/pricing')}
+                                className="w-full text-left px-4 py-2 text-[14px] text-[#2d2d2d] hover:bg-[#dcdcdc] transition-colors">
+                          Upgrade to Pro
                         </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            deleteThread(thread.id)
-                          }}
-                          className="p-1 hover:bg-red-500 hover:text-white rounded transition-colors"
-                          type="button"
-                        >
-                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor">
-                            <path d="M2 3h8M4 3V2h4v1M5 5v4M7 5v4" strokeWidth="1.5" strokeLinecap="round"/>
-                          </svg>
+                        <button onClick={handleLogout}
+                                className="w-full px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors">
+                          Logout
                         </button>
                       </div>
-                    </div>
                   )}
                 </div>
-              ))}
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-2">
-              {images.length > 0 && currentThreadId && (
-              <div className="text-[11px] text-[#8b8b8b] px-3 py-2 font-medium mt-4">RECENTLY GENERATED</div>
-            )}
-            {images
-              .filter(img => {
-                // Safety checks
-                if (!img?.image_url || typeof img.image_url !== 'string') return false;
-                if (!img.image_url.startsWith('http')) return false;
-                // ✅ This is already filtered by thread_id in loadImages()
-                return true;
-              })
-              .map(image => (
-              <div key={image.id} className="relative group mb-2">
-                <div
-                  onClick={() => {
-                    setSelectedImage(image)
-                    const imageMsg: ChatMessage = {
-                      id: `view-${image.id}`,
-                      role: 'assistant',
-                      content: image.prompt,
-                      type: 'image',
-                      imageUrl: image.image_url
-                    }
-                    const exists = messages.some(m => m.type === 'image' && m.imageUrl === image.image_url)
-                    if (!exists) {
-                      setMessages(prev => [...prev, imageMsg])
-                    }
-                  }}
-                  className={`w-full cursor-pointer rounded-lg overflow-hidden transition-all ${selectedImage?.id === image.id ? 'ring-2 ring-[#7c3aed]' : 'hover:ring-2 hover:ring-[#e0ddd4]'}`}
-                >
-                  <div className="aspect-video relative bg-[#f0eee8]">
-                    <Image src={image.image_url} alt={image.prompt} fill className="object-cover" />
-
-                    {/* ✅ Hover Icons - Top Right */}
-                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          downloadImage(image.image_url, `${image.id}.png`)
-                        }}
-                        className="p-1.5 bg-white/90 backdrop-blur-sm rounded-md hover:bg-white transition-colors shadow-sm"
-                        title="Download"
-                      >
-                        <svg className="w-3.5 h-3.5 text-[#2d2d2d]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          deleteImage(image.id)
-                        }}
-                        className="p-1.5 bg-white/90 backdrop-blur-sm rounded-md hover:bg-red-50 transition-colors shadow-sm"
-                        title="Delete"
-                      >
-                        <svg className="w-3.5 h-3.5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                  <div className="p-2 bg-white border-x border-b border-[#e0ddd4]">
-                    <p className="text-[11px] text-[#2d2d2d] line-clamp-2">{image.prompt}</p>
-                    <p className="text-[9px] text-[#8b8b8b] mt-1">{new Date(image.created_at).toLocaleDateString()}</p>
-                  </div>
-                </div>
               </div>
-            ))}
-            </div>
-
-            <div className="border-t border-[#e0ddd4] p-3">
-              <div className="relative" ref={userDropdownRef}>
-                <button onClick={() => setUserDropdownOpen(!userDropdownOpen)} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors">
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-medium hover:brightness-110 transition bg-primary">
-                    {userName ? userName.charAt(0).toUpperCase() : (userEmail?.charAt(0).toUpperCase() || 'U')}
-                  </div>
-                  <div className="flex-1 text-left min-w-0">
-                    <div className="text-[13px] text-[#2d2d2d] truncate font-medium">{userName || userEmail || 'User'}</div>
-                  </div>
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="flex-shrink-0">
-                    <path d="M6 8L3 5h6L6 8z"/>
-                  </svg>
-                </button>
-                {userDropdownOpen && (
-                  <div className="absolute bottom-full left-0 mb-2 w-full bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1">
-                    <div className="px-3 py-2 border-b border-[#e0ddd4]">
-                      <div className="text-[13px] text-[#2d2d2d] font-medium truncate">{userName || 'User'}</div>
-                      <div className="text-[11px] text-[#8b8b8b] truncate">{userEmail}</div>
-                    </div>
-                    <button onClick={() => router.push('/pricing')} className="w-full text-left px-4 py-2 text-[14px] text-[#2d2d2d] hover:bg-[#dcdcdc] transition-colors">
-                      Upgrade to Pro
-                    </button>
-                    <button onClick={handleLogout} className="w-full px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 transition-colors">
-                      Logout
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </>
+            </>
         )}
       </aside>
 

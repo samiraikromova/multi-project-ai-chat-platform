@@ -174,9 +174,18 @@ export async function POST(req: NextRequest) {
         console.error('⚠️ Failed to save image:', saveError);
       } else if (savedImage) {
         savedImages.push(savedImage);
+
+        // ✅ Also save to messages table for thread history
+        await supabase
+          .from('messages')
+          .insert({
+            thread_id: threadId,
+            role: 'assistant',
+            content: imageUrl, // Store URL as content
+            model: 'Ideogram'
+          });
       }
     }
-
     // ✅ Calculate cost based on ACTUAL number of images generated
     const actualNumImages = imageUrls.length;
     const actualCost = result.usage?.cost
