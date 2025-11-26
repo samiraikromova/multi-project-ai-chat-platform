@@ -125,16 +125,18 @@ export async function POST(req: NextRequest) {
       })
       .eq('id', userId)
 
-    // ✅ Log usage with marked up cost
-    await supabase.from('usage_logs').insert({
+    // ✅ Log usage with proper error handling
+    const { error: usageError } = await supabase.from('usage_logs').insert({
       user_id: userId,
       model: `Ideogram - ${quality}`,
       tokens_input: 0,
       tokens_output: 0,
-      estimated_cost: totalCost, // ✅ Already 3x marked up
-      project_id: projectId,
-      created_at: new Date().toISOString()
+      estimated_cost: totalCost,
     })
+
+    if (usageError) {
+      console.error('❌ Failed to log usage:', usageError)
+    }
 
     // Save assistant messages (one per image)
     if (result.imageUrls && result.imageUrls.length > 0) {

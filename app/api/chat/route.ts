@@ -7,7 +7,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// ✅ MARKUP MULTIPLIER - Charge users 3x actual cost
 const MARKUP_MULTIPLIER = 3
 
 function calculateCost(model: string, inputTokens: number, outputTokens: number): number {
@@ -181,16 +180,18 @@ export async function POST(req: NextRequest) {
       console.error('Failed to deduct credits:', creditError)
     }
 
-    // ✅ Log usage properly
-    await supabase.from('usage_logs').insert({
+    // ✅ Log usage with proper error handling
+    const { error: usageError } = await supabase.from('usage_logs').insert({
       user_id: userId,
       model: model,
       tokens_input: inputTokens,
       tokens_output: outputTokens,
-      estimated_cost: cost, // ✅ This is already 3x marked up
-      project_id: projectId,
-      created_at: new Date().toISOString()
+      estimated_cost: cost,
     })
+
+    if (usageError) {
+      console.error('❌ Failed to log usage:', usageError)
+    }
 
     // Save assistant message
     const { data: assistantMessage } = await supabase
