@@ -7,6 +7,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+// ✅ MARKUP MULTIPLIER - Charge users 3x actual cost
+const MARKUP_MULTIPLIER = 3
+
 function calculateCost(model: string, inputTokens: number, outputTokens: number): number {
   const priceMap: Record<string, { input: number; output: number }> = {
     'Claude Sonnet 4.5': { input: 3.00, output: 15.00 },
@@ -20,13 +23,16 @@ function calculateCost(model: string, inputTokens: number, outputTokens: number)
   const inputCost = (inputTokens / 1_000_000) * costs.input
   const outputCost = (outputTokens / 1_000_000) * costs.output
 
-  return inputCost + outputCost
+  return (inputCost + outputCost) * MARKUP_MULTIPLIER // ✅ Apply 3x markup
 }
 
 function estimateTokens(text: string): number {
-  // Rough estimate: 1 token ≈ 4 characters
   return Math.ceil(text.length / 4)
 }
+
+// ✅ Export config to disable body size limit and extend timeout
+export const maxDuration = 300 // 5 minutes (Vercel Pro)
+export const dynamic = 'force-dynamic'
 
 export async function POST(req: NextRequest) {
   try {
@@ -44,25 +50,24 @@ export async function POST(req: NextRequest) {
 
     console.log('📨 Chat request:', { userId, projectSlug, model, hasThread: !!threadId })
 
-
+    // Check credits
     const { data: user } = await supabase
       .from('users')
       .select('credits, subscription_tier')
       .eq('id', userId)
       .single()
 
-    if (!user || Number(user.credits) < 0.001){
+    if (!user || Number(user.credits) < 0.001) {
       return NextResponse.json(
         { error: 'Insufficient credits. Please top up or upgrade your plan.' },
         { status: 402 }
       )
     }
 
-
     let currentThreadId = threadId
 
+    // Create thread if needed
     if (!currentThreadId) {
-      // Create new thread
       const { data: newThread, error: threadError } = await supabase
         .from('chat_threads')
         .insert({
@@ -83,13 +88,12 @@ export async function POST(req: NextRequest) {
       console.log('✅ New thread created:', currentThreadId)
     }
 
-
+    // ✅ Load FULL conversation history (not just last 20)
     const { data: history } = await supabase
       .from('messages')
       .select('role, content')
       .eq('thread_id', currentThreadId)
       .order('created_at', { ascending: true })
-      .limit(20)
 
     const conversationHistory = history?.map((m) => ({
       role: m.role,
@@ -98,7 +102,7 @@ export async function POST(req: NextRequest) {
 
     console.log(`📚 Loaded ${conversationHistory.length} previous messages`)
 
-
+    // Save user message
     const { data: userMessage, error: userMsgError } = await supabase
       .from('messages')
       .insert({
@@ -115,7 +119,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to save message' }, { status: 500 })
     }
 
-
+    // ✅ Call N8N with extended timeout (5 minutes)
     const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL || 'https://n8n.leveragedcreator.ai/webhook/cb4-chat'
 
     const n8nPayload = {
@@ -127,17 +131,17 @@ export async function POST(req: NextRequest) {
       threadId: currentThreadId,
       fileUrls: fileUrls,
       systemPrompt: systemPrompt,
-      conversationHistory: conversationHistory, // ✅ Pass history for context
+      conversationHistory: conversationHistory,
     }
 
     console.log('🔄 Calling N8N webhook...')
 
     const n8nResponse = await fetch(n8nWebhookUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(n8nPayload),
-    signal: AbortSignal.timeout(180000)
-  })
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(n8nPayload),
+      signal: AbortSignal.timeout(300000) // ✅ 5 minute timeout
+    })
 
     if (!n8nResponse.ok) {
       const errorText = await n8nResponse.text()
@@ -150,7 +154,7 @@ export async function POST(req: NextRequest) {
 
     console.log('✅ AI response received')
 
-
+    // Calculate tokens and cost
     const inputTokens = estimateTokens(
       systemPrompt +
       conversationHistory.map((m) => m.content).join('\n') +
@@ -158,11 +162,11 @@ export async function POST(req: NextRequest) {
     )
     const outputTokens = estimateTokens(aiReply)
     const totalTokens = inputTokens + outputTokens
-    const cost = calculateCost(model, inputTokens, outputTokens)
+    const cost = calculateCost(model, inputTokens, outputTokens) // ✅ Already includes 3x markup
 
-    console.log(`💰 Tokens: ${inputTokens} in, ${outputTokens} out | Cost: $${cost.toFixed(6)}`)
+    console.log(`💰 Tokens: ${inputTokens} in, ${outputTokens} out | User Cost (3x): $${cost.toFixed(6)}`)
 
-
+    // Deduct credits
     const newCredits = Number(user.credits) - cost
 
     const { error: creditError } = await supabase
@@ -177,17 +181,18 @@ export async function POST(req: NextRequest) {
       console.error('Failed to deduct credits:', creditError)
     }
 
-
+    // ✅ Log usage properly
     await supabase.from('usage_logs').insert({
       user_id: userId,
       model: model,
       tokens_input: inputTokens,
       tokens_output: outputTokens,
-      estimated_cost: cost,
+      estimated_cost: cost, // ✅ This is already 3x marked up
       project_id: projectId,
+      created_at: new Date().toISOString()
     })
 
-
+    // Save assistant message
     const { data: assistantMessage } = await supabase
       .from('messages')
       .insert({
@@ -199,7 +204,6 @@ export async function POST(req: NextRequest) {
       })
       .select()
       .single()
-
 
     return NextResponse.json({
       success: true,
