@@ -1,6 +1,7 @@
 // app/api/generate-image/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import * as https from "node:https";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -84,7 +85,7 @@ export async function POST(req: NextRequest) {
     })
 
     // Call N8N
-    const n8nWebhookUrl = process.env.N8N_IMAGE_WEBHOOK_URL || 'https://n8n.leveragedcreator.ai/webhook/image-gen'
+    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL || 'https://n8n.leveragedcreator.ai/webhook/cb4-chat'
 
     const n8nPayload = {
       message,
