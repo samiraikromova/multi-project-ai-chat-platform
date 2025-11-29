@@ -687,9 +687,8 @@ export default function CB4Chat({
                         <div className="text-[15px] leading-[1.6] prose prose-sm max-w-none">
                               <ReactMarkdown components={MarkdownComponents}>
                                 {msg.role === 'assistant'
-                                  ? addSectionSeparators(formatMessageContent(msg.content))
-                                  : msg.content
-                                }
+                                  ?addSectionSeparators(formatMessageContent(msg.content))
+                                  :msg.content}
                               </ReactMarkdown>
                         </div>
                       </div>

@@ -383,3 +383,10 @@ body {
 .bg-\[\#d97757\] .prose hr {
   border-color: rgba(255, 255, 255, 0.2);
 }
+.prose > *:last-child {
+  margin-bottom: 0 !important;
+}
+
+.prose p:last-child {
+  margin-bottom: 0 !important;
+}
