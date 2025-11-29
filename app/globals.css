@@ -327,8 +327,12 @@ body {
 }
 
 /* Timestamps and scores styling */
-.prose li:contains('[') {
-  font-family: 'Courier New', monospace;
+.prose li {
+  font-variant-numeric: tabular-nums;
+}
+
+.prose code {
+  font-family: 'Courier New', Consolas, Monaco, monospace;
 }
 
 /* For user messages (dark background) */

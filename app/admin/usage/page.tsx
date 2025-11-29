@@ -111,28 +111,33 @@ export default function UsagePage() {
   }, [logs, timeFilter, userFilter, searchQuery])
 
   const exportToCSV = () => {
-    const csvData = [
-      ['User', 'Email', 'Model', 'Input Tokens', 'Output Tokens', 'Cost ($)', 'Date'],
-      ...filteredLogs.map(log => [
+  const csvData = [
+    ['User', 'Email', 'Model', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Cost ($)', 'Type', 'Date'],
+    ...filteredLogs.map(log => {
+      const isImageGen = log.model?.includes('Ideogram')
+      return [
         log.users?.name || 'Unknown',
         log.users?.email || '—',
         log.model || '—',
-        log.tokens_input || '—',
-        log.tokens_output || '—',
+        isImageGen ? 'N/A' : (log.tokens_input || '—'),
+        isImageGen ? 'N/A' : (log.tokens_output || '—'),
+        isImageGen ? 'N/A' : ((log.tokens_input || 0) + (log.tokens_output || 0)),
         log.estimated_cost ? Number(log.estimated_cost).toFixed(6) : '—',
+        isImageGen ? 'Image Generation' : 'Text Chat',
         new Date(log.created_at).toLocaleString()
-      ])
-    ]
+      ]
+    })
+  ]
 
-    const csvContent = csvData.map(row => row.join(',')).join('\n')
-    const blob = new Blob([csvContent], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `usage-logs-${new Date().toISOString().split('T')[0]}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+  const csvContent = csvData.map(row => row.join(',')).join('\n')
+  const blob = new Blob([csvContent], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `usage-logs-${new Date().toISOString().split('T')[0]}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
   // Pagination
   const indexOfLastLog = currentPage * logsPerPage
@@ -224,6 +229,7 @@ export default function UsagePage() {
             </select>
           </div>
 
+
           {/* Search */}
           <div>
             <label className="block text-sm font-medium text-[#555] mb-2">Search</label>
@@ -253,55 +259,72 @@ export default function UsagePage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-[#f7f5ef] text-[#555]">
-              <tr>
-                <th className="py-3 px-4 font-medium">User</th>
-                <th className="py-3 px-4 font-medium">Email</th>
-                <th className="py-3 px-4 font-medium">Model</th>
-                <th className="py-3 px-4 font-medium">Input Tokens</th>
-                <th className="py-3 px-4 font-medium">Output Tokens</th>
-                <th className="py-3 px-4 font-medium">Total Tokens</th>
-                <th className="py-3 px-4 font-medium">Cost ($)</th>
-                <th className="py-3 px-4 font-medium">Date</th>
-              </tr>
+            <tr>
+              <th className="py-3 px-4 font-medium">User</th>
+              <th className="py-3 px-4 font-medium">Email</th>
+              <th className="py-3 px-4 font-medium">Model / Type</th>
+              <th className="py-3 px-4 font-medium">Input Tokens</th>
+              <th className="py-3 px-4 font-medium">Output Tokens</th>
+              <th className="py-3 px-4 font-medium">Total</th>
+              <th className="py-3 px-4 font-medium">Cost ($)</th>
+              <th className="py-3 px-4 font-medium">Date</th>
+            </tr>
             </thead>
             <tbody>
-              {currentLogs.map((log, i) => (
-                <tr
-                  key={log.id || i}
-                  className="border-t border-[#eee] hover:bg-[#faf8f3] transition-colors"
-                >
-                  <td className="py-3 px-4 font-medium text-[#2d2d2d]">
-                    {log.users?.name || "Unknown"}
-                  </td>
-                  <td className="py-3 px-4 text-gray-600">
-                    {log.users?.email || "—"}
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className="inline-flex items-center px-2 py-1 rounded-md bg-[#f5f5f5] text-[12px] font-medium text-[#2d2d2d]">
-                      {log.model || "—"}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-right">{(log.tokens_input || 0).toLocaleString()}</td>
-                  <td className="py-3 px-4 text-right">{(log.tokens_output || 0).toLocaleString()}</td>
-                  <td className="py-3 px-4 text-right font-semibold">
-                    {((log.tokens_input || 0) + (log.tokens_output || 0)).toLocaleString()}
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono">
-                    {log.estimated_cost ? Number(log.estimated_cost).toFixed(6) : "—"}
-                  </td>
-                  <td className="py-3 px-4 text-gray-500">
-                    {new Date(log.created_at).toLocaleString()}
-                  </td>
-                </tr>
-              ))}
+            {currentLogs.map((log, i) => {
+              const isImageGen = log.model?.includes('Ideogram')
 
-              {currentLogs.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-gray-500">
-                    No usage logs found. Send some messages to see data here.
-                  </td>
-                </tr>
-              )}
+              return (
+                  <tr
+                      key={log.id || i}
+                      className="border-t border-[#eee] hover:bg-[#faf8f3] transition-colors"
+                  >
+                    <td className="py-3 px-4 font-medium text-[#2d2d2d]">
+                      {log.users?.name || "Unknown"}
+                    </td>
+                    <td className="py-3 px-4 text-gray-600">
+                      {log.users?.email || "—"}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className={`inline-flex items-center px-2 py-1 rounded-md text-[12px] font-medium ${
+                          isImageGen
+                              ? 'bg-purple-100 text-purple-700'
+                              : 'bg-[#f5f5f5] text-[#2d2d2d]'
+                      }`}>
+                        {isImageGen && '🎨 '}
+                        {log.model || "—"}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      {isImageGen ? (
+                          <span className="text-[#8b8b8b] text-[12px]">N/A</span>
+                      ) : (
+                          (log.tokens_input || 0).toLocaleString()
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      {isImageGen ? (
+                          <span className="text-[#8b8b8b] text-[12px]">N/A</span>
+                      ) : (
+                          (log.tokens_output || 0).toLocaleString()
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-right font-semibold">
+                      {isImageGen ? (
+                          <span className="text-[#8b8b8b] text-[12px]">Image Gen</span>
+                      ) : (
+                          ((log.tokens_input || 0) + (log.tokens_output || 0)).toLocaleString()
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono">
+                      {log.estimated_cost ? Number(log.estimated_cost).toFixed(6) : "—"}
+                    </td>
+                    <td className="py-3 px-4 text-gray-500">
+                      {new Date(log.created_at).toLocaleString()}
+                    </td>
+                  </tr>
+              )
+            })}
             </tbody>
           </table>
         </div>
@@ -309,12 +332,12 @@ export default function UsagePage() {
 
       {/* Pagination */}
       {filteredLogs.length > logsPerPage && (
-        <div className="flex justify-center items-center gap-2 mt-6">
-          <button
-            onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-            disabled={currentPage === 1}
-            className="px-4 py-2 border border-[#e0ddd4] rounded-lg text-sm text-[#555] hover:text-[#2d2d2d] hover:bg-[#f7f5ef] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
+          <div className="flex justify-center items-center gap-2 mt-6">
+            <button
+                onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                disabled={currentPage === 1}
+                className="px-4 py-2 border border-[#e0ddd4] rounded-lg text-sm text-[#555] hover:text-[#2d2d2d] hover:bg-[#f7f5ef] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
             Previous
           </button>
           <span className="text-sm text-[#555] px-4">
