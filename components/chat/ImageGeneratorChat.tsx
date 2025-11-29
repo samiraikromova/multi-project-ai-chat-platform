@@ -803,8 +803,8 @@ return (
                       <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         {msg.type === 'text' ? (
                           <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'text-white bg-primary' : 'bg-white border border-[#e0ddd4] text-[#2d2d2d]'}`}>
-                            <div className="text-[15px] leading-[1.6] whitespace-pre-wrap">
-                              {msg.content}
+                            <div className="text-[15px] leading-[1.6] prose prose-sm max-w-none">
+                              <ReactMarkdown>{msg.content}</ReactMarkdown>
                             </div>
                           </div>
                         ) : (

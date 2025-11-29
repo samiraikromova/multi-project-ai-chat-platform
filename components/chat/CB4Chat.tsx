@@ -361,6 +361,65 @@ export default function CB4Chat({
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
   }
 
+  const formatMessageContent = (content: string) => {
+    // Add custom styling for scores like "3/10", "Energy: 4/10"
+    const scorePattern = /(\w+[\w\s]*:\s*)(\d+\/10)/g
+    const styledContent = content.replace(
+      scorePattern,
+      (match, label, score) => {
+        const numScore = parseInt(score.split('/')[0])
+        const color = numScore <= 3 ? '#ef4444' : numScore <= 6 ? '#f59e0b' : '#22c55e'
+        return `${label}**<span style="color: ${color}; font-weight: 700;">${score}</span>**`
+      }
+    )
+    return styledContent
+  }
+
+  const MarkdownComponents = {
+      h1: ({ children }: any) => (
+        <h1 className="text-[24px] font-bold mt-6 mb-3 pb-2 border-b-2 border-[#d97757]">
+          {children}
+        </h1>
+      ),
+      h2: ({ children }: any) => (
+        <h2 className="text-[20px] font-semibold mt-5 mb-2 pl-3 border-l-4 border-[#d97757]">
+          {children}
+        </h2>
+      ),
+      h3: ({ children }: any) => (
+        <h3 className="text-[18px] font-semibold mt-4 mb-2">
+          {children}
+        </h3>
+      ),
+      strong: ({ children }: any) => (
+        <strong className="font-bold text-[#d97757]">
+          {children}
+        </strong>
+      ),
+      code: ({ inline, children }: any) => (
+        inline ? (
+          <code className="bg-[#f7f5ef] border border-[#e0ddd4] px-2 py-0.5 rounded text-[#d97757] font-semibold text-[14px]">
+            {children}
+          </code>
+        ) : (
+          <code>{children}</code>
+        )
+      ),
+      ul: ({ children }: any) => (
+        <ul className="my-3 space-y-2">
+          {children}
+        </ul>
+      ),
+      li: ({ children }: any) => (
+        <li className="relative pl-6 before:content-['•'] before:absolute before:left-0 before:text-[#d97757] before:font-bold before:text-[18px]">
+          {children}
+        </li>
+      )
+    }
+  const addSectionSeparators = (content: string) => {
+    return content.replace(/Section \d+:/g, (match) => `\n---\n\n${match}`)
+  }
+
   return (
     <div className="flex h-screen bg-[#f7f5ef] relative" onDragEnter={handleDragEnter} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
       {isDragging && (
@@ -622,21 +681,26 @@ export default function CB4Chat({
             ) : (
               <div className="space-y-6">
                 {messages.map(msg => (
-                  <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div
-                        className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'text-white bg-[#d97757]' : 'bg-white border border-[#e0ddd4] text-[#2d2d2d]'}`}>
-                      <div className="text-[15px] leading-[1.6] prose prose-sm max-w-none">
-                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div
+                          className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'text-white bg-[#d97757]' : 'bg-white border border-[#e0ddd4] text-[#2d2d2d]'}`}>
+                        <div className="text-[15px] leading-[1.6] prose prose-sm max-w-none">
+                              <ReactMarkdown components={MarkdownComponents}>
+                                {msg.role === 'assistant'
+                                  ? addSectionSeparators(formatMessageContent(msg.content))
+                                  : msg.content
+                                }
+                              </ReactMarkdown>
+                        </div>
                       </div>
                     </div>
-                  </div>
                 ))}
                 {loading && (
                     <div className="flex justify-start">
-                    <div className="bg-white border border-[#e0ddd4] rounded-2xl px-4 py-3">
-                      <div className="flex gap-1.5">
-                        <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: '#d97757' }}/>
-                        <div className="w-2 h-2 rounded-full animate-bounce delay-100" style={{ backgroundColor: '#d97757' }}/>
+                      <div className="bg-white border border-[#e0ddd4] rounded-2xl px-4 py-3">
+                        <div className="flex gap-1.5">
+                          <div className="w-2 h-2 rounded-full animate-bounce" style={{backgroundColor: '#d97757'}}/>
+                          <div className="w-2 h-2 rounded-full animate-bounce delay-100" style={{ backgroundColor: '#d97757' }}/>
                         <div className="w-2 h-2 rounded-full animate-bounce delay-200" style={{ backgroundColor: '#d97757' }}/>
                       </div>
                     </div>

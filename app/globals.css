@@ -99,3 +99,283 @@ body {
 .animate-fadeIn {
   animation: fadeIn 0.15s ease-out;
 }
+
+.prose-invert {
+  --tw-prose-body: #ffffff;
+  --tw-prose-headings: #ffffff;
+  --tw-prose-links: #ffd4c4;
+  --tw-prose-bold: #ffffff;
+  --tw-prose-code: #ffd4c4;
+  --tw-prose-pre-bg: rgba(0, 0, 0, 0.2);
+}
+
+.prose code {
+  background-color: rgba(0, 0, 0, 0.1);
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+}
+
+.prose pre {
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 0.5rem;
+}
+
+/* For user messages with dark background */
+.bg-primary .prose,
+.bg-\[\#d97757\] .prose {
+  --tw-prose-body: #ffffff;
+  --tw-prose-headings: #ffffff;
+  --tw-prose-links: #ffd4c4;
+  --tw-prose-bold: #ffffff;
+  --tw-prose-code: #ffd4c4;
+}
+
+.bg-primary .prose code,
+.bg-\[\#d97757\] .prose code {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+/* Enhanced Markdown Styling */
+.prose {
+  max-width: none;
+}
+
+.prose h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  color: #2d2d2d;
+  border-bottom: 2px solid #d97757;
+  padding-bottom: 0.5rem;
+}
+
+.prose h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-top: 1.75rem;
+  margin-bottom: 0.75rem;
+  color: #2d2d2d;
+  border-left: 4px solid #d97757;
+  padding-left: 0.75rem;
+}
+
+.prose h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  color: #2d2d2d;
+}
+
+.prose h4 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  color: #555;
+}
+
+.prose strong {
+  font-weight: 700;
+  color: #d97757;
+}
+
+.prose em {
+  font-style: italic;
+  color: #555;
+}
+
+.prose ul {
+  list-style-type: none;
+  padding-left: 0;
+  margin: 1rem 0;
+}
+
+.prose ul li {
+  position: relative;
+  padding-left: 1.5rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.6;
+}
+
+.prose ul li::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: #d97757;
+  font-weight: bold;
+  font-size: 1.2em;
+}
+
+.prose ol {
+  list-style-type: none;
+  counter-reset: item;
+  padding-left: 0;
+  margin: 1rem 0;
+}
+
+.prose ol li {
+  counter-increment: item;
+  position: relative;
+  padding-left: 2rem;
+  margin-bottom: 0.75rem;
+  line-height: 1.6;
+}
+
+.prose ol li::before {
+  content: counter(item) ".";
+  position: absolute;
+  left: 0;
+  color: #d97757;
+  font-weight: 700;
+  font-size: 1.1em;
+}
+
+.prose code {
+  background-color: #f7f5ef;
+  border: 1px solid #e0ddd4;
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+  font-size: 0.9em;
+  font-family: 'Courier New', monospace;
+  color: #d97757;
+  font-weight: 600;
+}
+
+.prose pre {
+  background-color: #2d2d2d;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+
+.prose pre code {
+  background-color: transparent;
+  border: none;
+  color: #f7f5ef;
+  padding: 0;
+  font-weight: 400;
+}
+
+.prose blockquote {
+  border-left: 4px solid #d97757;
+  padding-left: 1rem;
+  margin: 1.5rem 0;
+  font-style: italic;
+  color: #555;
+  background-color: #f7f5ef;
+  padding: 1rem;
+  border-radius: 0.25rem;
+}
+
+.prose hr {
+  border: none;
+  border-top: 2px solid #e0ddd4;
+  margin: 2rem 0;
+}
+
+.prose a {
+  color: #d97757;
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+.prose a:hover {
+  color: #c86545;
+}
+
+.prose p {
+  margin-bottom: 1rem;
+  line-height: 1.7;
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5rem 0;
+}
+
+.prose table th {
+  background-color: #f7f5ef;
+  border: 1px solid #e0ddd4;
+  padding: 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  color: #2d2d2d;
+}
+
+.prose table td {
+  border: 1px solid #e0ddd4;
+  padding: 0.75rem;
+}
+
+.prose table tr:nth-child(even) {
+  background-color: #faf8f3;
+}
+
+/* Checkmarks and X marks styling */
+.prose li:has(input[type="checkbox"]) {
+  list-style-type: none;
+  padding-left: 0;
+}
+
+.prose li input[type="checkbox"] {
+  margin-right: 0.5rem;
+  accent-color: #d97757;
+}
+
+/* Timestamps and scores styling */
+.prose li:contains('[') {
+  font-family: 'Courier New', monospace;
+}
+
+/* For user messages (dark background) */
+.bg-primary .prose h1,
+.bg-primary .prose h2,
+.bg-primary .prose h3,
+.bg-primary .prose h4,
+.bg-\[\#d97757\] .prose h1,
+.bg-\[\#d97757\] .prose h2,
+.bg-\[\#d97757\] .prose h3,
+.bg-\[\#d97757\] .prose h4 {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.bg-primary .prose strong,
+.bg-\[\#d97757\] .prose strong {
+  color: #ffd4c4;
+}
+
+.bg-primary .prose code,
+.bg-\[\#d97757\] .prose code {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+}
+
+.bg-primary .prose ul li::before,
+.bg-primary .prose ol li::before,
+.bg-\[\#d97757\] .prose ul li::before,
+.bg-\[\#d97757\] .prose ol li::before {
+  color: #ffd4c4;
+}
+
+.bg-primary .prose blockquote,
+.bg-\[\#d97757\] .prose blockquote {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+}
+
+.bg-primary .prose a,
+.bg-\[\#d97757\] .prose a {
+  color: #ffd4c4;
+}
+
+.bg-primary .prose hr,
+.bg-\[\#d97757\] .prose hr {
+  border-color: rgba(255, 255, 255, 0.2);
+}

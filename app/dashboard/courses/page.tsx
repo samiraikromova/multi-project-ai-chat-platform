@@ -146,7 +146,7 @@ export default function CoursesPage() {
         <div className="max-w-[1400px] mx-auto px-8 py-4 flex justify-between items-center">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => router.push('/dashboard')}
+              onClick={() => router.push('../dashboard')}
               className="flex items-center gap-2 text-[14px] text-[#6b6b6b] hover:text-[#2d2d2d]"
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -298,7 +298,7 @@ export default function CoursesPage() {
           }}
         >
           <div
-            className="bg-white rounded-lg overflow-hidden max-w-[1200px] w-full"
+            className="bg-white rounded-lg overflow-hidden max-w-[1200px] w-full max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center p-4 border-b border-[#e0ddd4]">
@@ -317,26 +317,25 @@ export default function CoursesPage() {
                 </svg>
               </button>
             </div>
-            <div
-                className="bg-black w-[calc(100%-40px)] max-w-[1180px] mx-auto aspect-video rounded-md overflow-hidden">
+            <div className="aspect-video bg-black">
               <iframe
-                  src={`https://player.vdocipher.com/v2/?otp=${playbackInfo.otp}&playbackInfo=${playbackInfo.playbackInfo}`}
-                  className="w-full h-full"
-                  allow="encrypted-media"
-                  allowFullScreen
+                src={`https://player.vdocipher.com/v2/?otp=${playbackInfo.otp}&playbackInfo=${playbackInfo.playbackInfo}`}
+                className="w-full h-full"
+                allow="encrypted-media"
+                allowFullScreen
               />
             </div>
-
             {selectedVideo.description && (
-                <div className="p-4">
-                  <p className="text-[14px] text-[#6b6b6b]">
-                    {selectedVideo.description}
-                  </p>
-                </div>
+              <div className="p-4 max-h-32 overflow-y-auto">
+                <p className="text-[14px] text-[#6b6b6b]">
+                  {selectedVideo.description}
+                </p>
+              </div>
             )}
           </div>
         </div>
       )}
+
 
       {/* Admin Modal */}
       {showAdminModal && (
