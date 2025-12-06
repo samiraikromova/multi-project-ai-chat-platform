@@ -569,9 +569,9 @@ return (
     <div className="flex h-screen bg-[#f7f5ef]">
       <ImageLightbox />
       {/* Sidebar */}
-      <aside className={`${sidebarOpen ? 'w-[260px]' : 'w-[60px]'} bg-[#f7f5ef] border-r border-[#e0ddd4] flex flex-col transition-all duration-300 flex-shrink-0`}>
-        {!sidebarOpen && (
-          <div className="flex flex-col h-full items-center py-3 gap-2">
+  <aside className={`${sidebarOpen ? 'w-[260px]' : 'w-[60px]'} bg-background border-r border-border flex flex-col transition-all duration-300 flex-shrink-0`}>
+  {!sidebarOpen && (
+      <div className="flex flex-col h-full items-center py-3 gap-2">
             <button onClick={() => setSidebarOpen(true)} className="w-10 h-10 rounded-lg hover:bg-[#e8e6df] transition-colors flex items-center justify-center text-[#6b6b6b]" title="Open sidebar">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                 <rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
@@ -634,7 +634,7 @@ return (
 
               <div className="p-3 space-y-2">
                 <button onClick={() => router.push('/dashboard')}
-                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors text-[13px] text-[#6b6b6b]">
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-accent hover:bg-accent/90 text-white transition-colors text-[13px] font-medium">
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <path d="M14 8H2M6 4l-4 4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
                           strokeLinejoin="round"/>
@@ -732,7 +732,7 @@ return (
                   <button onClick={() => setUserDropdownOpen(!userDropdownOpen)}
                           className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#e8e6df] transition-colors">
                     <div
-                        className="w-9 h-9 rounded-full flex items-center justify-center text-white font-medium hover:brightness-110 transition bg-primary">
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[13px] font-medium flex-shrink-0 bg-primary">
                       {userName ? userName.charAt(0).toUpperCase() : (userEmail?.charAt(0).toUpperCase() || 'U')}
                     </div>
                     <div className="flex-1 text-left min-w-0">
@@ -745,7 +745,7 @@ return (
                   </button>
                   {userDropdownOpen && (
                       <div
-                          className="absolute bottom-full left-0 mb-2 w-full bg-white border border-[#e0ddd4] rounded-lg shadow-lg py-1">
+                          className="absolute bottom-full mb-2 bg-surface border border-border rounded-xl shadow-lg w-52 z-50">
                         <div className="px-3 py-2 border-b border-[#e0ddd4]">
                           <div className="text-[13px] text-[#2d2d2d] font-medium truncate">{userName || 'User'}</div>
                           <div className="text-[11px] text-[#8b8b8b] truncate">{userEmail}</div>
@@ -768,10 +768,10 @@ return (
 
       {/* Main chat area */}
       <main className="flex-1 flex flex-col min-w-0">
-        <header className="bg-[#f7f5ef] border-b border-[#e0ddd4] px-6 py-3 flex items-center justify-between">
+        <header className="bg-background border-b border-border px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-xl">🖼️</span>
-            <h2 className="text-[15px] font-semibold text-text">
+            <h2 className="text-[15px] font-semibold text-foreground">
               {projectName || 'Image Generator'}
             </h2>
           </div>
@@ -890,6 +890,8 @@ return (
                             <div className="w-2 h-2 rounded-full animate-bounce delay-100 bg-primary"/>
                             <div className="w-2 h-2 rounded-full animate-bounce delay-200 bg-primary"/>
                           </div>
+
+
                         </div>
                       </div>
                   )}
